@@ -4,11 +4,16 @@
   "package": "dev.therealflo.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "MCOpenVRMixin",
+    "MCOpenXRMixin"
   ],
   "injectors": {
     "defaultRequire": 1
   },
   "overwrites": {
     "requireAnnotations": true
-  }
+  },
+  "mixins": [
+    "MCOpenXRMixin"
+  ]
 }
