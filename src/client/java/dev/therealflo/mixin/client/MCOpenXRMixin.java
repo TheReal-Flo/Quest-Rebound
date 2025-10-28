@@ -1,7 +1,6 @@
 package dev.therealflo.mixin.client;
 
 import dev.therealflo.client.DefaultBindingManager;
-import dev.therealflo.client.RequestModClient;
 import org.apache.commons.lang3.tuple.Pair;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,6 +20,7 @@ import java.util.HashSet;
  */
 @Mixin(value = MCOpenXR.class, remap = false)
 public class MCOpenXRMixin {
+
     /**
      * Redirects the XRBindings.getBinding() call to use our saved bindings if available.
      * This allows us to load custom bindings from file instead of the hardcoded defaults.
@@ -30,14 +30,20 @@ public class MCOpenXRMixin {
     private HashSet<Pair<String, String>> redirectGetBinding(String headset) {
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
 
+        System.out.println("[ReQuest] Processing headset profile: " + headset);
+        System.out.println("[ReQuest] Available profiles: " + manager.getAvailableProfiles());
+        System.out.println("[ReQuest] Has saved bindings for this profile: " + manager.hasSavedBindings(headset));
+
         // Try to load saved bindings first
         Collection<Pair<String, String>> savedBindings = manager.loadDefaultBindings(headset);
         if (savedBindings != null) {
+            System.out.println("[ReQuest] Using saved bindings for " + headset);
             // Return saved bindings as HashSet
             return new HashSet<>(savedBindings);
         }
 
         // If no saved bindings, get the original defaults and save them
+        System.out.println("[ReQuest] No saved bindings found for " + headset + ", saving defaults");
         HashSet<Pair<String, String>> originalBindings = XRBindings.getBinding(headset);
         manager.saveDefaultBindingsIfNeeded(headset, originalBindings);
 
@@ -53,10 +59,10 @@ public class MCOpenXRMixin {
 
         // Log available profiles for debugging
         if (!manager.getAvailableProfiles().isEmpty()) {
-            RequestModClient.LOGGER.info("[ReQuest] Found saved bindings for profiles: {}",
+            org.vivecraft.client_vr.settings.VRSettings.LOGGER.info("VivecraftRemapper: Found saved bindings for profiles: {}",
                     manager.getAvailableProfiles());
         } else {
-            RequestModClient.LOGGER.info("[ReQuest] No saved bindings found, will save defaults on first use");
+            org.vivecraft.client_vr.settings.VRSettings.LOGGER.info("VivecraftRemapper: No saved bindings found, will save defaults on first use");
         }
     }
 }

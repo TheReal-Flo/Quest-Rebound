@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Mixin for MCOpenVR to intercept the generateActionManifest method.
@@ -22,6 +23,7 @@ import java.util.Map;
  */
 @Mixin(value = MCOpenVR.class, remap = false)
 public class MCOpenVRMixin {
+
     private static final String[] CONTROLLER_TYPES = {
             "vive_controller", "oculus_touch", "holographic_controller",
             "knuckles", "vive_cosmos_controller"
@@ -82,10 +84,10 @@ public class MCOpenVRMixin {
         }
 
         if (hasCustomBindings) {
-            VRSettings.LOGGER.info("[ReQuest] Using custom OpenVR bindings");
+            VRSettings.LOGGER.info("VivecraftRemapper: Using custom OpenVR bindings");
             return customDefaults;
         } else {
-            VRSettings.LOGGER.info("[ReQuest] Using original OpenVR bindings");
+            VRSettings.LOGGER.info("VivecraftRemapper: Using original OpenVR bindings");
             return originalDefaults;
         }
     }
@@ -98,10 +100,10 @@ public class MCOpenVRMixin {
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
 
         if (!manager.getAvailableProfiles().isEmpty()) {
-            VRSettings.LOGGER.info("[ReQuest] Found saved OpenVR bindings for profiles: {}",
+            VRSettings.LOGGER.info("VivecraftRemapper: Found saved OpenVR bindings for profiles: {}",
                     manager.getAvailableProfiles());
         } else {
-            VRSettings.LOGGER.info("[ReQuest] No saved OpenVR bindings found, will save defaults");
+            VRSettings.LOGGER.info("VivecraftRemapper: No saved OpenVR bindings found, will save defaults");
         }
     }
 }

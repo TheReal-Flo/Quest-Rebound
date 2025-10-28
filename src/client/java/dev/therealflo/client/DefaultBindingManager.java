@@ -15,19 +15,20 @@ import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * Manages saving and loading of default VR controller bindings.
+ * Manages saving and loading of default VR controller bindings and keybind bindings.
  * On first launch, saves the default bindings from Vivecraft to a file.
  * On subsequent launches, loads the saved bindings from the file.
  */
 public class DefaultBindingManager {
-    private static final Logger LOGGER = LoggerFactory.getLogger("request");
+    private static final Logger LOGGER = LoggerFactory.getLogger("VivecraftRemapper");
     private static final String BINDINGS_FILE = "vivecraft_default_bindings.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private static DefaultBindingManager instance;
+    private static volatile DefaultBindingManager instance;
     private final Path bindingsFilePath;
-    private Map<String, List<BindingEntry>> savedBindings = new HashMap<>();
-    private boolean bindingsLoaded = false;
+    private BindingsData savedData = new BindingsData();
+    private volatile boolean bindingsLoaded = false;
+    private final Object lock = new Object();
 
     private DefaultBindingManager() {
         this.bindingsFilePath = Paths.get(BINDINGS_FILE);
@@ -35,13 +36,27 @@ public class DefaultBindingManager {
 
     public static DefaultBindingManager getInstance() {
         if (instance == null) {
-            instance = new DefaultBindingManager();
+            synchronized (DefaultBindingManager.class) {
+                if (instance == null) {
+                    instance = new DefaultBindingManager();
+                }
+            }
         }
         return instance;
     }
 
     /**
-     * Represents a single binding entry (action -> input path)
+     * Container class for all binding data
+     */
+    public static class BindingsData {
+        public Map<String, List<BindingEntry>> vrControllerBindings = new HashMap<>();
+        public Map<String, String> keybindBindings = new HashMap<>();
+
+        public BindingsData() {}
+    }
+
+    /**
+     * Represents a single VR controller binding entry.
      */
     public static class BindingEntry {
         public String action;
@@ -64,31 +79,33 @@ public class DefaultBindingManager {
     }
 
     /**
-     * Saves default bindings to file if they don't exist yet.
+     * Saves default VR controller bindings to file if they don't exist yet.
      * Called from OpenXR mixin during loadDefaultBindings().
      */
     public void saveDefaultBindingsIfNeeded(String headsetProfile, Collection<Pair<String, String>> bindings) {
-        // Load existing bindings first if file exists
-        if (!bindingsLoaded) {
-            loadBindingsFromFile();
-            bindingsLoaded = true;
+        synchronized (lock) {
+            // Load existing bindings first if file exists
+            if (!bindingsLoaded) {
+                loadBindingsFromFile();
+                bindingsLoaded = true;
+            }
+
+            // Check if we already have bindings for this specific headset profile
+            if (savedData.vrControllerBindings.containsKey(headsetProfile)) {
+                LOGGER.info("Default VR controller bindings for {} already exist, skipping save", headsetProfile);
+                return;
+            }
+
+            LOGGER.info("First launch detected for {}, saving default VR controller bindings", headsetProfile);
+
+            // Convert pairs to binding entries
+            List<BindingEntry> bindingEntries = bindings.stream()
+                    .map(BindingEntry::fromPair)
+                    .toList();
+
+            savedData.vrControllerBindings.put(headsetProfile, bindingEntries);
+            saveBindingsToFile();
         }
-
-        // Check if we already have bindings for this specific headset profile
-        if (savedBindings.containsKey(headsetProfile)) {
-            LOGGER.info("[ReQuest] Default bindings for {} already exist, skipping save", headsetProfile);
-            return;
-        }
-
-        LOGGER.info("[ReQuest] First launch detected for {}, saving default bindings", headsetProfile);
-
-        // Convert pairs to binding entries
-        List<BindingEntry> bindingEntries = bindings.stream()
-                .map(BindingEntry::fromPair)
-                .toList();
-
-        savedBindings.put(headsetProfile, bindingEntries);
-        saveBindingsToFile();
     }
 
     /**
@@ -96,34 +113,34 @@ public class DefaultBindingManager {
      */
     private void saveBindingsToFile() {
         try {
-            String json = GSON.toJson(savedBindings);
+            String json = GSON.toJson(savedData);
             Files.writeString(bindingsFilePath, json);
-            LOGGER.info("[ReQuest] Saved default bindings to {}", bindingsFilePath.toAbsolutePath());
+            LOGGER.info("Saved bindings to {}", bindingsFilePath.toAbsolutePath());
         } catch (IOException e) {
-            LOGGER.error("[ReQuest] Failed to save default bindings to file", e);
+            LOGGER.error("Failed to save bindings to file", e);
         }
     }
 
     /**
-     * Loads bindings from file if it exists.
+     * Loads VR controller bindings from file if it exists.
      * Returns the saved bindings for the specified headset profile, or null if not found.
      */
     public Collection<Pair<String, String>> loadDefaultBindings(String headsetProfile) {
-        if (!bindingsLoaded) {
-            loadBindingsFromFile();
-            bindingsLoaded = true;
-        }
+        synchronized (lock) {
+            if (!bindingsLoaded) {
+                loadBindingsFromFile();
+                bindingsLoaded = true;
+            }
 
-        List<BindingEntry> entries = savedBindings.get(headsetProfile);
-        if (entries == null) {
-            LOGGER.warn("[ReQuest] No saved bindings found for headset profile: {}", headsetProfile);
-            return null;
+            List<BindingEntry> entries = savedData.vrControllerBindings.get(headsetProfile);
+            if (entries != null) {
+                LOGGER.info("Loading {} saved VR controller bindings for {}", entries.size(), headsetProfile);
+                return entries.stream().map(BindingEntry::toPair).toList();
+            } else {
+                LOGGER.info("No saved VR controller bindings found for {}", headsetProfile);
+                return null;
+            }
         }
-
-        LOGGER.info("[ReQuest] Loaded {} saved bindings for {}", entries.size(), headsetProfile);
-        return entries.stream()
-                .map(BindingEntry::toPair)
-                .toList();
     }
 
     /**
@@ -131,80 +148,98 @@ public class DefaultBindingManager {
      */
     private void loadBindingsFromFile() {
         if (!Files.exists(bindingsFilePath)) {
-            LOGGER.info("[ReQuest] No saved bindings file found at {}", bindingsFilePath.toAbsolutePath());
+            LOGGER.info("No saved bindings file found at {}", bindingsFilePath.toAbsolutePath());
             return;
         }
 
         try {
             String json = Files.readString(bindingsFilePath);
-            Type type = new TypeToken<Map<String, List<BindingEntry>>>(){}.getType();
-            savedBindings = GSON.fromJson(json, type);
+            Type type = new TypeToken<BindingsData>(){}.getType();
+            BindingsData loadedData = GSON.fromJson(json, type);
 
-            if (savedBindings == null) {
-                savedBindings = new HashMap<>();
+            if (loadedData != null) {
+                savedData = loadedData;
+                // Ensure maps are initialized
+                if (savedData.vrControllerBindings == null) {
+                    savedData.vrControllerBindings = new HashMap<>();
+                }
+                if (savedData.keybindBindings == null) {
+                    savedData.keybindBindings = new HashMap<>();
+                }
             }
 
-            LOGGER.info("[ReQuest] Loaded saved bindings from {}", bindingsFilePath.toAbsolutePath());
-
-            // Log what was loaded
-            for (Map.Entry<String, List<BindingEntry>> entry : savedBindings.entrySet()) {
-                LOGGER.info("[ReQuest]   {}: {} bindings", entry.getKey(), entry.getValue().size());
-            }
+            LOGGER.info("Loaded bindings from {}: {} VR profiles, {} keybind bindings",
+                    bindingsFilePath.toAbsolutePath(),
+                    savedData.vrControllerBindings.size(),
+                    savedData.keybindBindings.size());
 
         } catch (IOException e) {
-            LOGGER.error("[ReQuest] Failed to load bindings from file", e);
-            savedBindings = new HashMap<>();
+            LOGGER.error("Failed to load bindings from file", e);
+            savedData = new BindingsData();
         }
     }
 
     /**
-     * Checks if saved bindings exist for the given headset profile.
+     * Checks if we have saved VR controller bindings for the given headset profile.
      */
     public boolean hasSavedBindings(String headsetProfile) {
-        if (!bindingsLoaded) {
-            loadBindingsFromFile();
-            bindingsLoaded = true;
+        synchronized (lock) {
+            if (!bindingsLoaded) {
+                loadBindingsFromFile();
+                bindingsLoaded = true;
+            }
+            return savedData.vrControllerBindings.containsKey(headsetProfile);
         }
-        return savedBindings.containsKey(headsetProfile);
     }
 
     /**
-     * Gets all available headset profiles that have saved bindings.
+     * Gets all available VR controller binding profiles.
      */
     public Set<String> getAvailableProfiles() {
-        if (!bindingsLoaded) {
-            loadBindingsFromFile();
-            bindingsLoaded = true;
+        synchronized (lock) {
+            if (!bindingsLoaded) {
+                loadBindingsFromFile();
+                bindingsLoaded = true;
+            }
+            return new HashSet<>(savedData.vrControllerBindings.keySet());
         }
-        return new HashSet<>(savedBindings.keySet());
     }
 
     /**
-     * Clears all saved bindings and deletes the file.
-     * Useful for debugging or resetting to defaults.
+     * Clears all saved bindings.
      */
     public void clearSavedBindings() {
-        savedBindings.clear();
-        try {
-            Files.deleteIfExists(bindingsFilePath);
-            LOGGER.info("[ReQuest] Cleared all saved bindings");
-        } catch (IOException e) {
-            LOGGER.error("[ReQuest] Failed to delete bindings file", e);
+        synchronized (lock) {
+            savedData = new BindingsData();
+            try {
+                Files.deleteIfExists(bindingsFilePath);
+                LOGGER.info("Cleared all saved bindings");
+            } catch (IOException e) {
+                LOGGER.error("Failed to delete bindings file", e);
+            }
+            bindingsLoaded = false;
         }
-        bindingsLoaded = false;
     }
 
     /**
-     * Manually saves bindings for a specific headset profile.
-     * Useful for updating bindings programmatically.
+     * Saves VR controller bindings for a specific profile.
      */
     public void saveBindingsForProfile(String headsetProfile, Collection<Pair<String, String>> bindings) {
-        List<BindingEntry> bindingEntries = bindings.stream()
-                .map(BindingEntry::fromPair)
-                .toList();
+        synchronized (lock) {
+            if (!bindingsLoaded) {
+                loadBindingsFromFile();
+                bindingsLoaded = true;
+            }
 
-        savedBindings.put(headsetProfile, bindingEntries);
-        saveBindingsToFile();
-        LOGGER.info("[ReQuest] Manually saved {} bindings for {}", bindings.size(), headsetProfile);
+            List<BindingEntry> bindingEntries = bindings.stream()
+                    .map(BindingEntry::fromPair)
+                    .toList();
+
+            savedData.vrControllerBindings.put(headsetProfile, bindingEntries);
+            saveBindingsToFile();
+            LOGGER.info("Saved {} VR controller bindings for {}", bindingEntries.size(), headsetProfile);
+        }
     }
+
+
 }
