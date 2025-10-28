@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "request",
+  "version": "${version}",
+  "name": "ReQuest",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/request/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "dev.therealflo.client.RequestModDataGenerator"
+    ],
+    "client": [
+      "dev.therealflo.client.RequestModClient"
+    ],
+    "main": [
+      "dev.therealflo.RequestMod"
+    ]
+  },
+  "mixins": [
+    "request.mixins.json",
+    {
+      "config": "request.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
