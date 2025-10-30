@@ -13,7 +13,7 @@ Be warned, the 1.0 alpha builds are only intended for testing purposes, and I wi
 
 ## Features:
 - [x] Rebinding of Vivecraft actions
-- [ ] Binding of Minecraft keybinds
+- [x] Binding of Minecraft keybinds
 - [ ] UI for rebinding key
 - [ ] Share configurations
 - [ ] Detect the correct controller layout in GUI
