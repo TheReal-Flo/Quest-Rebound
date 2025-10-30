@@ -1,4 +1,5 @@
 {
-  "key.request.open_reload": "Open Reload Screen",
+  "key.request.open_reload": "Open Reload Screen [DO NOT USE]",
+  "key.request.open_binding": "Open Bindings Menu",
   "key.categories.request": "Quest: Rebound"
 }

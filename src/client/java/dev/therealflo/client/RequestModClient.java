@@ -1,5 +1,6 @@
 package dev.therealflo.client;
 
+import dev.therealflo.client.screens.ChangeBindingScreen;
 import dev.therealflo.client.screens.ReloadBindingsScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -22,6 +23,7 @@ public class RequestModClient implements ClientModInitializer {
 
     private static final String CATEGORY = "key.categories.request";
     public static KeyBinding openReloadScreenKey;
+    public static KeyBinding openBindingScreenKey;
 
     public static void logInfo(String s) {
         LOGGER.info("[ReQuest] {}", s);
@@ -46,9 +48,20 @@ public class RequestModClient implements ClientModInitializer {
                 CATEGORY                // Category translation key
         ));
 
+        openBindingScreenKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.request.open_binding", // Translation key for the keybinding name
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_UNKNOWN,  // Default key
+                CATEGORY                // Category translation key
+        ));
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (openReloadScreenKey.wasPressed()) {
                 client.execute(() -> client.setScreen(new ReloadBindingsScreen()));
+            }
+
+            if (openBindingScreenKey.wasPressed()) {
+                client.execute(() -> client.setScreen(new ChangeBindingScreen()));
             }
 
             if (registered) return;

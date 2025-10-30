@@ -255,21 +255,25 @@ public class DefaultBindingManager {
      */
     public void saveDefaultBindingsIfNeeded(String headsetProfile, Collection<Pair<String, String>> bindings) {
         synchronized (lock) {
-            Path profileFile = getProfileFilePath(headsetProfile);
+            // Normalize the profile first
+            String normalizedProfile = normalizeProfile(headsetProfile);
+            Path profileFile = getProfileFilePath(normalizedProfile);
             
             // Check if we already have bindings for this specific headset profile
             if (Files.exists(profileFile)) {
-                LOGGER.info("Default VR controller bindings for {} already exist, skipping save", headsetProfile);
+                LOGGER.info("Default VR controller bindings for {} (normalized to {}) already exist, skipping save", 
+                headsetProfile, normalizedProfile);
                 return;
             }
 
-            LOGGER.info("First launch detected for {}, saving default VR controller bindings", headsetProfile);
+            LOGGER.info("First launch detected for {} (normalized to {}), saving default VR controller bindings", 
+            headsetProfile, normalizedProfile);
 
             ProfileBindingsData profileData = new ProfileBindingsData();
             for (Pair<String, String> binding : bindings) {
                 profileData.bindings.add(BindingEntry.fromPair(binding));
             }
-            
+        
             saveProfileToFile(profileFile, profileData);
         }
     }
@@ -296,12 +300,15 @@ public class DefaultBindingManager {
      */
     public Collection<Pair<String, String>> loadDefaultBindings(String headsetProfile) {
         synchronized (lock) {
-            Path profileFile = getProfileFilePath(headsetProfile);
-            
-            if (!Files.exists(profileFile)) {
-                LOGGER.info("No saved VR controller bindings found for {}", headsetProfile);
-                return null;
-            }
+        // Normalize the profile first
+        String normalizedProfile = normalizeProfile(headsetProfile);
+        Path profileFile = getProfileFilePath(normalizedProfile);
+        
+        if (!Files.exists(profileFile)) {
+            LOGGER.info("No saved VR controller bindings found for {} (normalized to {})", 
+                headsetProfile, normalizedProfile);
+            return null;
+        }
 
             try {
                 String json = Files.readString(profileFile);
@@ -310,27 +317,30 @@ public class DefaultBindingManager {
 
                 if (profileData != null && profileData.bindings != null) {
                     LOGGER.info("Loading {} saved VR controller bindings for {}", 
-                        profileData.bindings.size(), headsetProfile);
-                    
-                    return profileData.bindings.stream().map(BindingEntry::toPair).toList();
-                }
-            } catch (IOException e) {
-                LOGGER.error("Failed to load bindings from file for {}", headsetProfile, e);
+                        profileData.bindings.size(), headsetProfile, normalizedProfile);
+                
+                return profileData.bindings.stream().map(BindingEntry::toPair).toList();
             }
-            
-            return null;
+        } catch (IOException e) {
+            LOGGER.error("Failed to load bindings from file for {} (normalized to {})", 
+                headsetProfile, normalizedProfile, e);
         }
+        
+        return null;
     }
+}
 
-    /**
-     * Checks if we have saved VR controller bindings for the given headset profile.
-     */
-    public boolean hasSavedBindings(String headsetProfile) {
-        synchronized (lock) {
-            Path profileFile = getProfileFilePath(headsetProfile);
-            return Files.exists(profileFile);
-        }
+/**
+ * Checks if we have saved VR controller bindings for the given headset profile.
+ */
+public boolean hasSavedBindings(String headsetProfile) {
+    synchronized (lock) {
+        // Normalize the profile first
+        String normalizedProfile = normalizeProfile(headsetProfile);
+        Path profileFile = getProfileFilePath(normalizedProfile);
+        return Files.exists(profileFile);
     }
+}
 
     /**
      * Gets all available VR controller binding profiles.
@@ -389,7 +399,9 @@ public class DefaultBindingManager {
      */
     public void saveBindingsForProfile(String headsetProfile, Collection<Pair<String, String>> bindings) {
         synchronized (lock) {
-            Path profileFile = getProfileFilePath(headsetProfile);
+            // Normalize the profile first
+            String normalizedProfile = normalizeProfile(headsetProfile);
+            Path profileFile = getProfileFilePath(normalizedProfile);
 
             ProfileBindingsData profileData = new ProfileBindingsData();
             for (Pair<String, String> binding : bindings) {
@@ -397,7 +409,24 @@ public class DefaultBindingManager {
             }
             
             saveProfileToFile(profileFile, profileData);
-            LOGGER.info("Saved {} VR controller bindings for {}", profileData.bindings.size(), headsetProfile);
+            LOGGER.info("Saved {} VR controller bindings for {} (normalized to {})", 
+                profileData.bindings.size(), headsetProfile, normalizedProfile);
         }
+    }
+
+    /**
+     * Gets the unified profile path for a given interaction profile.
+     * Useful for displaying to users which profiles are unified.
+     */
+    public String getUnifiedProfile(String interactionProfilePath) {
+        return normalizeProfile(interactionProfilePath);
+    }
+
+    /**
+     * Checks if the given interaction profile is part of a unified group.
+     */
+    public boolean isUnifiedProfile(String interactionProfilePath) {
+        return UNIFIED_PROFILES.containsKey(interactionProfilePath) &&
+           !interactionProfilePath.equals(UNIFIED_PROFILES.get(interactionProfilePath));
     }
 }
