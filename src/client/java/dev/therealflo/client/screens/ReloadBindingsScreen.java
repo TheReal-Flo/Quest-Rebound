@@ -1,5 +1,6 @@
 package dev.therealflo.client.screens;
 
+import dev.therealflo.client.api.MCOpenXRReload;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.Components;
 import io.wispforest.owo.ui.container.Containers;
@@ -7,6 +8,7 @@ import io.wispforest.owo.ui.container.FlowLayout;
 import io.wispforest.owo.ui.core.*;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.NotNull;
+import org.vivecraft.client_vr.ClientDataHolderVR;
 
 public class ReloadBindingsScreen extends BaseOwoScreen<FlowLayout> {
 
@@ -33,7 +35,11 @@ public class ReloadBindingsScreen extends BaseOwoScreen<FlowLayout> {
         rootComponent.child(
                 Components.button(
                         Text.literal("Reload"),
-                        button -> { System.out.println("click"); }
+                        button -> {
+                            if (ClientDataHolderVR.getInstance().vr instanceof MCOpenXRReload reloadable) {
+                                reloadable.reloadXRBindings();
+                            }
+                        }
                 )
         );
     }

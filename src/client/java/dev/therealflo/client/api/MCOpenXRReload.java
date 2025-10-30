@@ -1,4 +1,5 @@
 package dev.therealflo.client.api;
 
-public class MCOpenXRReload {
+public interface MCOpenXRReload {
+    void reloadXRBindings();
 }

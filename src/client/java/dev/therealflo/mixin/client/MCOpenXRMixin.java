@@ -1,8 +1,11 @@
 package dev.therealflo.mixin.client;
 
 import dev.therealflo.client.DefaultBindingManager;
+import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.api.MCOpenXRReload;
 import org.apache.commons.lang3.tuple.Pair;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -19,7 +22,29 @@ import java.util.HashSet;
  * On subsequent launches, loads the saved bindings from the file instead of using hardcoded ones.
  */
 @Mixin(value = MCOpenXR.class, remap = false)
-public class MCOpenXRMixin {
+public abstract class MCOpenXRMixin implements MCOpenXRReload {
+
+    /**
+     * Invokes MCOpenXR.loadActionHandles(), which builds actions, suggests bindings, attaches action sets,
+     * and sets up controller action spaces based on current XRBindings.
+     */
+    @Invoker("loadActionHandles")
+    protected abstract void vivecraft$invokeLoadActionHandles();
+
+    /**
+     * Invokes MCOpenXR.loadDefaultBindings() to reload the bindings from files.
+     */
+    @Invoker("loadDefaultBindings")
+    protected abstract void vivecraft$invokeLoadDefaultBindings();
+
+    @Override
+    public void reloadXRBindings() {
+        // First, reload the bindings from the config files (this will trigger our redirect)
+        this.vivecraft$invokeLoadDefaultBindings();
+        
+        // Then, rerun Vivecraft's binding setup pipeline on the current OpenXR session
+        this.vivecraft$invokeLoadActionHandles();
+    }
 
     /**
      * Redirects the XRBindings.getBinding() call to use our saved bindings if available.
@@ -29,25 +54,38 @@ public class MCOpenXRMixin {
             target = "Lorg/vivecraft/client_vr/provider/openxr/XRBindings;getBinding(Ljava/lang/String;)Ljava/util/HashSet;"))
     private HashSet<Pair<String, String>> redirectGetBinding(String headset) {
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
-
-        System.out.println("[ReQuest] Processing headset profile: " + headset);
-        System.out.println("[ReQuest] Available profiles: " + manager.getAvailableProfiles());
-        System.out.println("[ReQuest] Has saved bindings for this profile: " + manager.hasSavedBindings(headset));
-
-        // Try to load saved bindings first
+        
+        // Check if there's an active custom profile set in the config
+        String activeProfile = manager.getActiveProfile(headset);
+        
+        // If active profile is not "default", try to load the custom profile
+        if (!"default".equals(activeProfile)) {
+            // Build the custom profile path
+            String customProfilePath = headset + "/" + activeProfile;
+            Collection<Pair<String, String>> customBindings = manager.loadDefaultBindings(customProfilePath);
+            
+            if (customBindings != null) {
+                RequestModClient.LOGGER.info("[ReQuest] Loading custom profile '{}' for {}", activeProfile, headset);
+                return new HashSet<>(customBindings);
+            } else {
+                RequestModClient.LOGGER.warn("[ReQuest] Custom profile '{}' not found for {}, falling back to default",
+                    activeProfile, headset);
+            }
+        }
+        
+        // Try to load saved default bindings
         Collection<Pair<String, String>> savedBindings = manager.loadDefaultBindings(headset);
+        
         if (savedBindings != null) {
-            System.out.println("[ReQuest] Using saved bindings for " + headset);
-            // Return saved bindings as HashSet
+            // Return saved default bindings
             return new HashSet<>(savedBindings);
         }
-
-        // If no saved bindings, get the original defaults and save them
-        System.out.println("[ReQuest] No saved bindings found for " + headset + ", saving defaults");
-        HashSet<Pair<String, String>> originalBindings = XRBindings.getBinding(headset);
-        manager.saveDefaultBindingsIfNeeded(headset, originalBindings);
-
-        return originalBindings;
+        
+        // If no saved bindings exist, get the default ones and save them
+        HashSet<Pair<String, String>> defaultBindings = XRBindings.getBinding(headset);
+        manager.saveDefaultBindingsIfNeeded(headset, defaultBindings);
+        
+        return defaultBindings;
     }
 
     /**
@@ -55,14 +93,6 @@ public class MCOpenXRMixin {
      */
     @Inject(method = "loadDefaultBindings", at = @At("HEAD"))
     private void onLoadDefaultBindingsStart(CallbackInfo ci) {
-        DefaultBindingManager manager = DefaultBindingManager.getInstance();
-
-        // Log available profiles for debugging
-        if (!manager.getAvailableProfiles().isEmpty()) {
-            org.vivecraft.client_vr.settings.VRSettings.LOGGER.info("VivecraftRemapper: Found saved bindings for profiles: {}",
-                    manager.getAvailableProfiles());
-        } else {
-            org.vivecraft.client_vr.settings.VRSettings.LOGGER.info("VivecraftRemapper: No saved bindings found, will save defaults on first use");
-        }
+        DefaultBindingManager.getInstance();
     }
 }
