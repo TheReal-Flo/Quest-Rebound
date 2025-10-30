@@ -42,7 +42,7 @@ public class RequestModClient implements ClientModInitializer {
         openReloadScreenKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.request.open_reload", // Translation key for the keybinding name
                 InputUtil.Type.KEYSYM,
-                GLFW.GLFW_KEY_T,       // Default key
+                GLFW.GLFW_KEY_UNKNOWN,  // Default key
                 CATEGORY                // Category translation key
         ));
 

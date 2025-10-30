@@ -28,6 +28,13 @@ public class DefaultBindingManager {
     private static final String CONFIG_FILE = "rebound_settings.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    // Unified profile groups - controllers that share the same bindings
+    private static final Map<String, String> UNIFIED_PROFILES = Map.of(
+            "/interaction_profiles/oculus/touch_controller", "/interaction_profiles/oculus/touch_controller",
+            "/interaction_profiles/bytedance/pico4_controller", "/interaction_profiles/oculus/touch_controller",
+            "/interaction_profiles/bytedance/pico_neo3_controller", "/interaction_profiles/oculus/touch_controller"
+    );
+
     private static volatile DefaultBindingManager instance;
     private final Path bindingsDirectory;
     private final Path configDirectory;
@@ -112,11 +119,22 @@ public class DefaultBindingManager {
      * Example: "/interaction_profiles/oculus/touch_controller" -> "interaction_profiles/oculus/touch_controller.json"
      */
     private Path getProfileFilePath(String interactionProfilePath) {
-        // Remove leading slash if present
-        String normalizedPath = interactionProfilePath.startsWith("/") ? 
-            interactionProfilePath.substring(1) : interactionProfilePath;
+        // Normalize to unified profile if applicable
+        String normalizedProfile = normalizeProfile(interactionProfilePath);
         
+        // Remove leading slash if present
+        String normalizedPath = normalizedProfile.startsWith("/") ? 
+            normalizedProfile.substring(1) : normalizedProfile;
+
         return bindingsDirectory.resolve(normalizedPath + ".json");
+    }
+
+    /**
+     * Normalizes an interaction profile path to its unified profile.
+     * Quest 2, Pico 4, and Pico Neo 3 all map to the Oculus Touch controller profile.
+     */
+    private String normalizeProfile(String interactionProfilePath) {
+        return UNIFIED_PROFILES.getOrDefault(interactionProfilePath, interactionProfilePath);
     }
 
     /**
@@ -189,10 +207,13 @@ public class DefaultBindingManager {
      */
     public String getActiveProfile(String interactionProfilePath) {
         synchronized (lock) {
+            // Normalize the profile first
+            String normalizedProfile = normalizeProfile(interactionProfilePath);
+            
             ConfigData config = loadConfig();
 
             if (config.bindings != null &&
-                    interactionProfilePath.equals(config.bindings.profile)) {
+                    normalizedProfile.equals(config.bindings.profile)) {
                 return config.bindings.active != null ? config.bindings.active : "default";
             }
 
@@ -206,10 +227,14 @@ public class DefaultBindingManager {
      */
     public void setActiveProfile(String interactionProfilePath, String activeProfile) {
         synchronized (lock) {
+            // Normalize the profile first
+            String normalizedProfile = normalizeProfile(interactionProfilePath);
+            
             ConfigData config = loadConfig();
-            config.bindings = new ConfigData.BindingsConfig(interactionProfilePath, activeProfile);
+            config.bindings = new ConfigData.BindingsConfig(normalizedProfile, activeProfile);
             saveConfig(config);
-            LOGGER.info("Set active profile for {} to {}", interactionProfilePath, activeProfile);
+            LOGGER.info("Set active profile for {} (normalized to {}) to {}", 
+                interactionProfilePath, normalizedProfile, activeProfile);
         }
     }
 
