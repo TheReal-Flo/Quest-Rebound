@@ -3,6 +3,7 @@ package dev.therealflo.client;
 import dev.therealflo.client.screens.ReloadBindingsScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
@@ -20,12 +21,7 @@ public class RequestModClient implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     private static final String CATEGORY = "key.categories.request";
-    public static final KeyBinding openReloadScreenKey = new KeyBinding(
-            "key.request.open_reload", // Translation key for the keybinding name
-            InputUtil.Type.KEYSYM,
-            GLFW.GLFW_KEY_T,       // Default key
-            CATEGORY                // Category translation key
-    );
+    public static KeyBinding openReloadScreenKey;
 
     public static void logInfo(String s) {
         LOGGER.info("[ReQuest] {}", s);
@@ -42,6 +38,13 @@ public class RequestModClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         logInfo("ReQuest has been loaded");
+
+        openReloadScreenKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.request.open_reload", // Translation key for the keybinding name
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_T,       // Default key
+                CATEGORY                // Category translation key
+        ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (openReloadScreenKey.wasPressed()) {
