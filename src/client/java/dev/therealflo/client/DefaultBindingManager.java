@@ -19,9 +19,6 @@ import java.util.stream.Stream;
  * Manages saving and loading of default VR controller bindings and keybind bindings.
  * On first launch, saves the default bindings from Vivecraft to a file.
  * On subsequent launches, loads the saved bindings from the file.
- * 
- * Includes namespace conflict detection to handle cases where multiple mods
- * try to bind the same VR action.
  */
 public class DefaultBindingManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("VivecraftRemapper");
@@ -31,9 +28,6 @@ public class DefaultBindingManager {
     private static volatile DefaultBindingManager instance;
     private final Path bindingsDirectory;
     private final Object lock = new Object();
-    
-    // Track which mods own which actions to detect conflicts
-    private final Map<String, NamespaceInfo> actionNamespaces = new HashMap<>();
 
     private DefaultBindingManager() {
         this.bindingsDirectory = Paths.get(BINDINGS_DIR);
@@ -51,26 +45,10 @@ public class DefaultBindingManager {
     }
 
     /**
-     * Information about which namespace (mod) owns a specific action.
-     */
-    public static class NamespaceInfo {
-        public String namespace; // The mod ID extracted from the keybind
-        public String originalAction; // The full action path
-        public int conflictCount; // How many times this action has been registered
-        
-        public NamespaceInfo(String namespace, String originalAction) {
-            this.namespace = namespace;
-            this.originalAction = originalAction;
-            this.conflictCount = 1;
-        }
-    }
-
-    /**
      * Container class for a single profile's binding data
      */
     public static class ProfileBindingsData {
         public List<BindingEntry> bindings = new ArrayList<>();
-        public Map<String, NamespaceInfo> namespaces = new HashMap<>(); // Track ownership
 
         public ProfileBindingsData() {}
     }
@@ -81,14 +59,12 @@ public class DefaultBindingManager {
     public static class BindingEntry {
         public String action;
         public String inputPath;
-        public String namespace; // Which mod owns this binding
 
         public BindingEntry() {}
 
         public BindingEntry(String action, String inputPath) {
             this.action = action;
             this.inputPath = inputPath;
-            this.namespace = extractNamespace(action);
         }
 
         public Pair<String, String> toPair() {
@@ -98,35 +74,6 @@ public class DefaultBindingManager {
         public static BindingEntry fromPair(Pair<String, String> pair) {
             return new BindingEntry(pair.getLeft(), pair.getRight());
         }
-    }
-
-    /**
-     * Extracts the namespace (mod ID) from a keybind identifier.
-     * Examples:
-     *   "key.minecraft.forward" -> "minecraft"
-     *   "key.vivecraft.menuButton" -> "vivecraft"
-     *   "/user/hand/left/input/trigger/value" -> "vivecraft" (default for VR paths)
-     */
-    private static String extractNamespace(String action) {
-        if (action == null) {
-            return "unknown";
-        }
-        
-        // Handle OpenXR input paths (start with /user/)
-        if (action.startsWith("/user/")) {
-            return "vivecraft";
-        }
-        
-        // Handle Minecraft-style keybind identifiers (key.modid.action)
-        if (action.startsWith("key.")) {
-            String[] parts = action.split("\\.");
-            if (parts.length >= 2) {
-                return parts[1]; // Return the mod ID
-            }
-        }
-        
-        // Default to vivecraft if we can't determine
-        return "vivecraft";
     }
 
     /**
@@ -158,54 +105,6 @@ public class DefaultBindingManager {
     }
 
     /**
-     * Detects and logs conflicts in action bindings.
-     * Returns a deduplicated collection with conflicts resolved.
-     */
-    private Collection<BindingEntry> detectAndResolveConflicts(Collection<Pair<String, String>> bindings, String profileName) {
-        Map<String, BindingEntry> actionToBinding = new LinkedHashMap<>();
-        Map<String, List<String>> conflicts = new HashMap<>();
-        
-        for (Pair<String, String> binding : bindings) {
-            BindingEntry entry = BindingEntry.fromPair(binding);
-            String action = entry.action;
-            
-            if (actionToBinding.containsKey(action)) {
-                // Conflict detected!
-                BindingEntry existing = actionToBinding.get(action);
-                
-                conflicts.computeIfAbsent(action, k -> new ArrayList<>()).add(
-                    String.format("%s (namespace: %s)", existing.inputPath, existing.namespace)
-                );
-                conflicts.get(action).add(
-                    String.format("%s (namespace: %s)", entry.inputPath, entry.namespace)
-                );
-                
-                // Resolution strategy: Keep the first one (you can customize this)
-                LOGGER.warn("[ReQuest] Binding conflict detected for action '{}' in profile '{}'", action, profileName);
-                LOGGER.warn("[ReQuest]   Keeping: {} (namespace: {})", existing.inputPath, existing.namespace);
-                LOGGER.warn("[ReQuest]   Ignoring: {} (namespace: {})", entry.inputPath, entry.namespace);
-            } else {
-                actionToBinding.put(action, entry);
-            }
-        }
-        
-        // Log summary of conflicts
-        if (!conflicts.isEmpty()) {
-            LOGGER.warn("[ReQuest] ========================================");
-            LOGGER.warn("[ReQuest] Found {} conflicting actions in profile '{}':", conflicts.size(), profileName);
-            for (Map.Entry<String, List<String>> conflict : conflicts.entrySet()) {
-                LOGGER.warn("[ReQuest]   Action '{}' has {} conflicting bindings:", conflict.getKey(), conflict.getValue().size());
-                for (String binding : conflict.getValue()) {
-                    LOGGER.warn("[ReQuest]     - {}", binding);
-                }
-            }
-            LOGGER.warn("[ReQuest] ========================================");
-        }
-        
-        return actionToBinding.values();
-    }
-
-    /**
      * Saves default VR controller bindings to file if they don't exist yet.
      * Called from OpenXR mixin during loadDefaultBindings().
      */
@@ -221,15 +120,9 @@ public class DefaultBindingManager {
 
             LOGGER.info("First launch detected for {}, saving default VR controller bindings", headsetProfile);
 
-            // Detect and resolve conflicts
-            Collection<BindingEntry> bindingEntries = detectAndResolveConflicts(bindings, headsetProfile);
-
             ProfileBindingsData profileData = new ProfileBindingsData();
-            profileData.bindings = new ArrayList<>(bindingEntries);
-            
-            // Store namespace information
-            for (BindingEntry entry : bindingEntries) {
-                profileData.namespaces.put(entry.action, new NamespaceInfo(entry.namespace, entry.action));
+            for (Pair<String, String> binding : bindings) {
+                profileData.bindings.add(BindingEntry.fromPair(binding));
             }
             
             saveProfileToFile(profileFile, profileData);
@@ -273,20 +166,6 @@ public class DefaultBindingManager {
                 if (profileData != null && profileData.bindings != null) {
                     LOGGER.info("Loading {} saved VR controller bindings for {}", 
                         profileData.bindings.size(), headsetProfile);
-                    
-                    // Log namespace information if available
-                    if (profileData.namespaces != null && !profileData.namespaces.isEmpty()) {
-                        Map<String, Long> namespaceCount = profileData.bindings.stream()
-                            .collect(java.util.stream.Collectors.groupingBy(
-                                entry -> entry.namespace != null ? entry.namespace : "unknown",
-                                java.util.stream.Collectors.counting()
-                            ));
-                        
-                        LOGGER.info("Loaded namespace distribution:");
-                        namespaceCount.forEach((namespace, count) -> 
-                            LOGGER.info("  - {}: {} bindings", namespace, count)
-                        );
-                    }
                     
                     return profileData.bindings.stream().map(BindingEntry::toPair).toList();
                 }
@@ -366,48 +245,14 @@ public class DefaultBindingManager {
     public void saveBindingsForProfile(String headsetProfile, Collection<Pair<String, String>> bindings) {
         synchronized (lock) {
             Path profileFile = getProfileFilePath(headsetProfile);
-            
-            // Detect and resolve conflicts
-            Collection<BindingEntry> bindingEntries = detectAndResolveConflicts(bindings, headsetProfile);
 
             ProfileBindingsData profileData = new ProfileBindingsData();
-            profileData.bindings = new ArrayList<>(bindingEntries);
-            
-            // Store namespace information
-            for (BindingEntry entry : bindingEntries) {
-                profileData.namespaces.put(entry.action, new NamespaceInfo(entry.namespace, entry.action));
+            for (Pair<String, String> binding : bindings) {
+                profileData.bindings.add(BindingEntry.fromPair(binding));
             }
             
             saveProfileToFile(profileFile, profileData);
-            LOGGER.info("Saved {} VR controller bindings for {}", bindingEntries.size(), headsetProfile);
-        }
-    }
-
-    /**
-     * Gets namespace information for all bindings in a profile.
-     * Useful for debugging and conflict resolution.
-     */
-    public Map<String, NamespaceInfo> getNamespaceInfo(String headsetProfile) {
-        synchronized (lock) {
-            Path profileFile = getProfileFilePath(headsetProfile);
-            
-            if (!Files.exists(profileFile)) {
-                return new HashMap<>();
-            }
-
-            try {
-                String json = Files.readString(profileFile);
-                Type type = new TypeToken<ProfileBindingsData>(){}.getType();
-                ProfileBindingsData profileData = GSON.fromJson(json, type);
-
-                if (profileData != null && profileData.namespaces != null) {
-                    return new HashMap<>(profileData.namespaces);
-                }
-            } catch (IOException e) {
-                LOGGER.error("Failed to load namespace info for {}", headsetProfile, e);
-            }
-            
-            return new HashMap<>();
+            LOGGER.info("Saved {} VR controller bindings for {}", profileData.bindings.size(), headsetProfile);
         }
     }
 }
