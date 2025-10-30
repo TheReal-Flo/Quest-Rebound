@@ -6,6 +6,7 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.vivecraft.client_vr.provider.openxr.XRBindings;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -21,16 +22,20 @@ import java.util.stream.Stream;
  * On subsequent launches, loads the saved bindings from the file.
  */
 public class DefaultBindingManager {
-    private static final Logger LOGGER = LoggerFactory.getLogger("VivecraftRemapper");
+    private static final Logger LOGGER = LoggerFactory.getLogger("request");
     private static final String BINDINGS_DIR = "interaction_profiles";
+    private static final String CONFIG_DIR = "config";
+    private static final String CONFIG_FILE = "rebound_settings.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static volatile DefaultBindingManager instance;
     private final Path bindingsDirectory;
+    private final Path configDirectory;
     private final Object lock = new Object();
 
     private DefaultBindingManager() {
         this.bindingsDirectory = Paths.get(BINDINGS_DIR);
+        this.configDirectory = Paths.get(CONFIG_DIR);
     }
 
     public static DefaultBindingManager getInstance() {
@@ -51,6 +56,32 @@ public class DefaultBindingManager {
         public List<BindingEntry> bindings = new ArrayList<>();
 
         public ProfileBindingsData() {}
+    }
+
+
+    /**
+     * Container class for the config file that tracks active profiles
+     */
+    public static class ConfigData {
+        public BindingsConfig bindings;
+
+        public ConfigData() {
+            this.bindings = new BindingsConfig();
+        }
+
+        public static class BindingsConfig {
+            public String profile;
+            public String active;
+
+            public BindingsConfig() {
+                this.active = "default";
+            }
+
+            public BindingsConfig(String profile, String active) {
+                this.profile = profile;
+                this.active = active;
+            }
+        }
     }
 
     /**
@@ -102,6 +133,95 @@ public class DefaultBindingManager {
         relativePath = relativePath.replace('\\', '/');
         // Add leading slash
         return "/" + relativePath;
+    }
+
+    /**
+     * Gets the path to the config file.
+     */
+    private Path getConfigFilePath() {
+        return configDirectory.resolve(CONFIG_FILE);
+    }
+
+    /**
+     * Loads the config data from file, or returns a new empty config if file doesn't exist.
+     */
+    private ConfigData loadConfig() {
+        synchronized (lock) {
+            Path configFile = getConfigFilePath();
+
+            if (!Files.exists(configFile)) {
+                return new ConfigData();
+            }
+
+            try {
+                String json = Files.readString(configFile);
+                ConfigData config = GSON.fromJson(json, ConfigData.class);
+                return config != null ? config : new ConfigData();
+            } catch (IOException e) {
+                LOGGER.error("Failed to load config from file", e);
+                return new ConfigData();
+            }
+        }
+    }
+
+    /**
+     * Saves the config data to file.
+     */
+    private void saveConfig(ConfigData config) {
+        synchronized (lock) {
+            try {
+                Path configFile = getConfigFilePath();
+                // Create parent directories if they don't exist
+                Files.createDirectories(configFile.getParent());
+
+                String json = GSON.toJson(config);
+                Files.writeString(configFile, json);
+                LOGGER.info("Saved config to {}", configFile.toAbsolutePath());
+            } catch (IOException e) {
+                LOGGER.error("Failed to save config to file", e);
+            }
+        }
+    }
+
+    /**
+     * Gets the currently active profile name for the given interaction profile path.
+     * Returns "default" if no custom profile is set.
+     */
+    public String getActiveProfile(String interactionProfilePath) {
+        synchronized (lock) {
+            ConfigData config = loadConfig();
+
+            if (config.bindings != null &&
+                    interactionProfilePath.equals(config.bindings.profile)) {
+                return config.bindings.active != null ? config.bindings.active : "default";
+            }
+
+            return "default";
+        }
+    }
+
+    /**
+     * Sets the active profile for the given interaction profile path.
+     * Pass "default" to use the default bindings from the interaction profile.
+     */
+    public void setActiveProfile(String interactionProfilePath, String activeProfile) {
+        synchronized (lock) {
+            ConfigData config = loadConfig();
+            config.bindings = new ConfigData.BindingsConfig(interactionProfilePath, activeProfile);
+            saveConfig(config);
+            LOGGER.info("Set active profile for {} to {}", interactionProfilePath, activeProfile);
+        }
+    }
+
+    /**
+     * Clears the active profile configuration, resetting to default.
+     */
+    public void clearActiveProfile() {
+        synchronized (lock) {
+            ConfigData config = new ConfigData();
+            saveConfig(config);
+            LOGGER.info("Cleared active profile configuration");
+        }
     }
 
     /**
