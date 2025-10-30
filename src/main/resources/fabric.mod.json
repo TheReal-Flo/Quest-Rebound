@@ -31,6 +31,7 @@
     "fabricloader": ">=${loader_version}",
     "fabric": "*",
     "minecraft": "${minecraft_version}",
-    "vivecraft": "*"
+    "vivecraft": "*",
+    "owo-lib": "*"
   }
 }
