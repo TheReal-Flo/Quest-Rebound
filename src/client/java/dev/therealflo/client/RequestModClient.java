@@ -1,12 +1,16 @@
 package dev.therealflo.client;
 
+import dev.therealflo.client.screens.ReloadBindingsScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.Identifier;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.vivecraft.api_beta.client.VivecraftClientAPI;
 import org.vivecraft.client_vr.ClientDataHolderVR;
-import org.vivecraft.client_vr.provider.ControllerType;
 import org.vivecraft.client_vr.provider.MCVR;
 import org.vivecraft.client_vr.provider.control.VRInputAction;
 
@@ -14,6 +18,14 @@ public class RequestModClient implements ClientModInitializer {
     private boolean registered = false;
     public static final String MOD_ID = "request";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+    private static final String CATEGORY = "key.categories.request";
+    public static final KeyBinding openReloadScreenKey = new KeyBinding(
+            "key.request.open_reload", // Translation key for the keybinding name
+            InputUtil.Type.KEYSYM,
+            GLFW.GLFW_KEY_T,       // Default key
+            CATEGORY                // Category translation key
+    );
 
     public static void logInfo(String s) {
         LOGGER.info("[ReQuest] {}", s);
@@ -32,6 +44,10 @@ public class RequestModClient implements ClientModInitializer {
         logInfo("ReQuest has been loaded");
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (openReloadScreenKey.wasPressed()) {
+                client.execute(() -> client.setScreen(new ReloadBindingsScreen()));
+            }
+
             if (registered) return;
 
             if (!VivecraftClientAPI.getInstance().isVrInitialized()) return;
