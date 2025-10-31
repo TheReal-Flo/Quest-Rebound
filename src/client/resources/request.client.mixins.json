@@ -6,7 +6,8 @@
   "client": [
     "MCOpenVRMixin",
     "MCOpenXRMixin",
-    "MCVRMixin"
+    "MCVRMixin",
+    "XRBindingsOdysseyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

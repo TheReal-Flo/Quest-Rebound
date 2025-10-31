@@ -11,9 +11,11 @@ Since then, no other solution to this problem has been released, and because I g
 This mod is still in a very early stage, and I started developing it after being awake for 16 hours already. While developing the first build, I recognized quite a few performance problems on my Pico 4, which I haven't seen without the mod before. Just saying.
 Be warned, the 1.0 alpha builds are only intended for testing purposes, and I will add support for more versions once I reach a beta stage with fixed performance and a UI
 
+This mod will be deprecated once Vivecraft or QuestCraft provides a native solution. (probably QuestCraft 7.0 or 6.1)
+
 ## Features:
 - [x] Rebinding of Vivecraft actions
 - [x] Binding of Minecraft keybinds
 - [ ] UI for rebinding key
 - [ ] Share configurations
-- [ ] Detect the correct controller layout in GUI
+- [x] Detect the correct controller layout in GUI (Not needed as we only need to provide one layout)

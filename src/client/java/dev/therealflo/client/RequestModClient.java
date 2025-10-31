@@ -16,6 +16,10 @@ import org.vivecraft.client_vr.ClientDataHolderVR;
 import org.vivecraft.client_vr.provider.MCVR;
 import org.vivecraft.client_vr.provider.control.VRInputAction;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 public class RequestModClient implements ClientModInitializer {
     private boolean registered = false;
     public static final String MOD_ID = "request";
@@ -35,6 +39,41 @@ public class RequestModClient implements ClientModInitializer {
 
     public static void logError(String s) {
         LOGGER.error("[ReQuest] {}", s);
+    }
+
+    /**
+     * Gets all registered VR input actions from Vivecraft.
+     * Returns a list of action paths like "/actions/ingame/in/key.attack"
+     */
+    public static List<String> getAllRegisteredActions() {
+        List<String> actions = new ArrayList<>();
+        
+        try {
+            if (!VivecraftClientAPI.getInstance().isVrInitialized()) {
+                logWarn("VR not initialized, cannot get registered actions");
+                return actions;
+            }
+            
+            MCVR vr = ClientDataHolderVR.getInstance().vr;
+            if (vr == null) {
+                logWarn("VR instance is null, cannot get registered actions");
+                return actions;
+            }
+            
+            // Get all VRInputActions
+            for (VRInputAction action : vr.getInputActions()) {
+                // action.name already contains the full path like "/actions/ingame/in/key.attack"
+                // So just use it directly without building the path
+                actions.add(action.name);
+            }
+            
+            logInfo("Retrieved " + actions.size() + " registered VR actions");
+        } catch (Exception e) {
+            logError("Failed to get registered actions: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return actions;
     }
 
     @Override

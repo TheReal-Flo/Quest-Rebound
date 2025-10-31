@@ -39,34 +39,36 @@ public class InputPathDescriptions {
         // Initialize Quest 2 / Pico 4 / Pico Neo 3 inputs
         // Right Hand
         QUEST_INPUTS.put("/user/hand/right/input/trigger", 
-            new InputDescription("/user/hand/right/input/trigger", "Right", "Trigger", "Right hand trigger button"));
+            new InputDescription("/user/hand/right/input/trigger", "Right", "Trigger", "Right trigger"));
         QUEST_INPUTS.put("/user/hand/right/input/squeeze", 
-            new InputDescription("/user/hand/right/input/squeeze", "Right", "Grip", "Right hand grip button"));
+            new InputDescription("/user/hand/right/input/squeeze", "Right", "Grip", "Right grip"));
         QUEST_INPUTS.put("/user/hand/right/input/thumbstick", 
-            new InputDescription("/user/hand/right/input/thumbstick", "Right", "Thumbstick", "Right hand thumbstick (2D axis)"));
+            new InputDescription("/user/hand/right/input/thumbstick", "Right", "Thumbstick", "Right thumbstick (2D axis)"));
         QUEST_INPUTS.put("/user/hand/right/input/thumbstick/click", 
-            new InputDescription("/user/hand/right/input/thumbstick/click", "Right", "Thumbstick Click", "Right hand thumbstick press"));
+            new InputDescription("/user/hand/right/input/thumbstick/click", "Right", "Thumbstick Click", "Right thumbstick"));
         QUEST_INPUTS.put("/user/hand/right/input/a/click", 
-            new InputDescription("/user/hand/right/input/a/click", "Right", "A Button", "Right hand A button"));
+            new InputDescription("/user/hand/right/input/a/click", "Right", "A Button", "A button"));
         QUEST_INPUTS.put("/user/hand/right/input/b/click", 
-            new InputDescription("/user/hand/right/input/b/click", "Right", "B Button", "Right hand B button"));
+            new InputDescription("/user/hand/right/input/b/click", "Right", "B Button", "B button"));
         
         // Left Hand
         QUEST_INPUTS.put("/user/hand/left/input/trigger", 
-            new InputDescription("/user/hand/left/input/trigger", "Left", "Trigger", "Left hand trigger button"));
+            new InputDescription("/user/hand/left/input/trigger", "Left", "Trigger", "Left trigger"));
         QUEST_INPUTS.put("/user/hand/left/input/squeeze", 
-            new InputDescription("/user/hand/left/input/squeeze", "Left", "Grip", "Left hand grip button"));
+            new InputDescription("/user/hand/left/input/squeeze", "Left", "Grip", "Left grip"));
         QUEST_INPUTS.put("/user/hand/left/input/thumbstick", 
-            new InputDescription("/user/hand/left/input/thumbstick", "Left", "Thumbstick", "Left hand thumbstick (2D axis)"));
+            new InputDescription("/user/hand/left/input/thumbstick", "Left", "Thumbstick", "Left thumbstick (2D axis)"));
         QUEST_INPUTS.put("/user/hand/left/input/thumbstick/click", 
-            new InputDescription("/user/hand/left/input/thumbstick/click", "Left", "Thumbstick Click", "Left hand thumbstick press"));
+            new InputDescription("/user/hand/left/input/thumbstick/click", "Left", "Thumbstick Click", "Left thumbstick"));
         QUEST_INPUTS.put("/user/hand/left/input/x/click", 
-            new InputDescription("/user/hand/left/input/x/click", "Left", "X Button", "Left hand X button"));
+            new InputDescription("/user/hand/left/input/x/click", "Left", "X Button", "X button"));
         QUEST_INPUTS.put("/user/hand/left/input/y/click", 
-            new InputDescription("/user/hand/left/input/y/click", "Left", "Y Button", "Left hand Y button"));
+            new InputDescription("/user/hand/left/input/y/click", "Left", "Y Button", "Y button"));
         QUEST_INPUTS.put("/user/hand/left/input/menu/click", 
-            new InputDescription("/user/hand/left/input/menu/click", "Left", "Menu Button", "Left hand menu/system button"));
-        
+            new InputDescription("/user/hand/left/input/menu/click", "Left", "Menu Button", "Left hand menu button"));
+
+        // NOT NEEDED FURTHER
+
         // Initialize Vive Controller inputs
         // Right Hand
         VIVE_INPUTS.put("/user/hand/right/input/trigger", 
@@ -95,7 +97,7 @@ public class InputPathDescriptions {
         // Initialize Cosmos Controller inputs
         // Right Hand
         COSMOS_INPUTS.put("/user/hand/right/input/trigger", 
-            new InputDescription("/user/hand/right/input/trigger", "Right", "Trigger", "Right hand trigger button"));
+            new InputDescription("/user/hand/right/input/trigger", "Right", "Trigger", "Right trigger"));
         COSMOS_INPUTS.put("/user/hand/right/input/squeeze", 
             new InputDescription("/user/hand/right/input/squeeze", "Right", "Grip", "Right hand grip button"));
         COSMOS_INPUTS.put("/user/hand/right/input/thumbstick", 
