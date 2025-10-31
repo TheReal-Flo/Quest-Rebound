@@ -16,6 +16,7 @@ This mod will be deprecated once Vivecraft or QuestCraft provides a native solut
 ## Features:
 - [x] Rebinding of Vivecraft actions
 - [x] Binding of Minecraft keybinds
-- [ ] UI for rebinding key
+- [x] UI for rebinding key
 - [ ] Share configurations
 - [x] Detect the correct controller layout in GUI (Not needed as we only need to provide one layout)
+- [x] Implement QuestCraft support for Samsung Odyssey (also known as Galaxy XR)
