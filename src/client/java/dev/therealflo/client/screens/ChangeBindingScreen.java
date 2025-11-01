@@ -340,6 +340,19 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
     }
 
     /**
+     * Refreshes the screen by reloading bindings and rebuilding the UI.
+     * Called when returning from SelectActionScreen to show updated bindings.
+     */
+    public void refresh() {
+        // Clear the current UI
+        if (this.uiAdapter != null && this.uiAdapter.rootComponent != null) {
+            this.uiAdapter.rootComponent.clearChildren();
+            // Rebuild the UI with fresh data
+            this.build(this.uiAdapter.rootComponent);
+        }
+    }
+
+    /**
      * Called when the user clicks "Change" for a binding.
      * Opens the SelectActionScreen to allow the user to choose which actions to bind.
      */

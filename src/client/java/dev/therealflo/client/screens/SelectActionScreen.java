@@ -275,6 +275,10 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
     @Override
     public void close() {
         if (this.client != null) {
+            // Refresh the parent screen if it's a ChangeBindingScreen to show updated bindings
+            if (parentScreen instanceof ChangeBindingScreen changeBindingScreen) {
+                changeBindingScreen.refresh();
+            }
             this.client.setScreen(parentScreen);
         }
     }
