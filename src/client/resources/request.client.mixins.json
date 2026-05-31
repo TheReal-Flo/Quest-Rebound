@@ -6,6 +6,7 @@
   "client": [
     "MCOpenVRMixin",
     "MCOpenXRMixin",
+    "MCVRAccessor",
     "MCVRMixin",
     "XRBindingsOdysseyMixin",
     "ControlsOptionsScreenMixin"

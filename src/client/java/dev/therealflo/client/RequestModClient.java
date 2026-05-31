@@ -19,6 +19,7 @@ import org.vivecraft.api_beta.client.VivecraftClientAPI;
 import org.vivecraft.client_vr.ClientDataHolderVR;
 import org.vivecraft.client_vr.provider.MCVR;
 import org.vivecraft.client_vr.provider.control.VRInputAction;
+import org.vivecraft.client_vr.provider.openxr.MCOpenXR;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,17 @@ public class RequestModClient implements ClientModInitializer {
         LOGGER.error("[ReQuest] {}", s);
     }
 
+    public static String getPreferredInteractionProfile() {
+        MCVR vr = ClientDataHolderVR.getInstance().vr;
+        if (vr instanceof MCOpenXR openxr) {
+            String detected = RuntimeBindingRouter.guessProfileFromSystemName(openxr.systemName);
+            if (!detected.isBlank()) {
+                return detected;
+            }
+        }
+        return RuntimeBindingRouter.OCULUS_TOUCH_PROFILE;
+    }
+
     /**
      * Gets all registered VR input actions from Vivecraft.
      * Returns a list of action paths like "/actions/ingame/in/key.attack"
@@ -66,6 +78,9 @@ public class RequestModClient implements ClientModInitializer {
             
             // Get all VRInputActions
             for (VRInputAction action : vr.getInputActions()) {
+                if (RuntimeBindingRouter.getInstance().isRawAction(action)) {
+                    continue;
+                }
                 // action.name already contains the full path like "/actions/ingame/in/key.attack"
                 // So just use it directly without building the path
                 actions.add(action.name);
@@ -122,9 +137,12 @@ public class RequestModClient implements ClientModInitializer {
     }
 
     private void registerRemap(MCVR vr) {
-        // Log all available actions once
+        int actionCount = 0;
         for (VRInputAction action : vr.getInputActions()) {
-            logInfo("VR action available: " + action.name);
+            if (!RuntimeBindingRouter.getInstance().isRawAction(action)) {
+                actionCount++;
+            }
         }
+        logInfo("Runtime rebinding ready with " + actionCount + " logical actions");
     }
 }

@@ -143,8 +143,14 @@ public class InputPathDescriptions {
      */
     public static InputDescription getDescription(String interactionProfilePath, String inputPath) {
         Map<String, InputDescription> inputs = getInputsForProfile(interactionProfilePath);
-        return inputs.getOrDefault(inputPath, 
-            new InputDescription(inputPath, "Unknown", inputPath, "Unknown input"));
+        if (inputs.containsKey(inputPath)) {
+            return inputs.get(inputPath);
+        }
+
+        String hand = inputPath.contains("/user/hand/right/") ? "Right" :
+            inputPath.contains("/user/hand/left/") ? "Left" : "Unknown";
+        String displayName = buildFallbackDisplayName(inputPath);
+        return new InputDescription(inputPath, hand, displayName, displayName);
     }
     
     /**
@@ -184,5 +190,37 @@ public class InputPathDescriptions {
         }
         
         return byHand;
+    }
+
+    private static String buildFallbackDisplayName(String inputPath) {
+        String[] tokens = inputPath.split("/");
+        if (tokens.length == 0) {
+            return inputPath;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            if (token.isBlank() || "user".equals(token) || "hand".equals(token) || "input".equals(token)) {
+                continue;
+            }
+            if ("left".equals(token) || "right".equals(token)) {
+                continue;
+            }
+
+            if (!builder.isEmpty()) {
+                builder.append(' ');
+            }
+
+            builder.append(switch (token) {
+                case "a", "b", "x", "y" -> token.toUpperCase();
+                case "click" -> "Click";
+                case "touch" -> "Touch";
+                case "value" -> "Value";
+                default -> Character.toUpperCase(token.charAt(0)) + token.substring(1);
+            });
+        }
+
+        return builder.isEmpty() ? inputPath : builder.toString();
     }
 }

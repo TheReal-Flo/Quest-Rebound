@@ -1,5 +1,7 @@
 package dev.therealflo.mixin.client;
 
+import dev.therealflo.client.DefaultBindingManager;
+import dev.therealflo.client.RequestModClient;
 import dev.therealflo.client.screens.ChangeBindingScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -20,7 +22,8 @@ public abstract class ControlsOptionsScreenMixin extends Screen {
     @Inject(method = "addOptions", at = @At("RETURN"))
     private void request$addButton(CallbackInfo ci) {
         int w = 150, h = 20;
-        int x = this.width / 2 - w / 2;
+        int gap = 4;
+        int x = this.width / 2 - w - gap / 2;
         int y = this.height - 128;
 
         this.addDrawableChild(
@@ -29,11 +32,31 @@ public abstract class ControlsOptionsScreenMixin extends Screen {
                         .dimensions(x, y, w, h)
                         .build()
         );
+
+        this.addDrawableChild(
+                ButtonWidget.builder(Text.translatable("button.request.swap_joysticks"),
+                                b -> request$swapJoysticks())
+                        .dimensions(x + w + gap, y, w, h)
+                        .build()
+        );
     }
 
     // (optional) make title visible if you want to draw extra text, not required for the button itself
     @Override
     public void render(DrawContext ctx, int mx, int my, float delta) {
         super.render(ctx, mx, my, delta);
+    }
+
+    private void request$swapJoysticks() {
+        boolean swapped = DefaultBindingManager.getInstance()
+                .swapJoystickBindings(RequestModClient.getPreferredInteractionProfile());
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null) {
+            client.player.sendMessage(
+                    Text.literal(swapped ? "Swapped left/right joystick bindings" : "No joystick bindings found to swap"),
+                    false
+            );
+        }
     }
 }

@@ -3,6 +3,7 @@ package dev.therealflo.client.screens;
 import dev.therealflo.client.DefaultBindingManager;
 import dev.therealflo.client.InputPathDescriptions;
 import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.RuntimeBindingRouter;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.CheckboxComponent;
 import io.wispforest.owo.ui.component.Components;
@@ -16,6 +17,9 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import org.vivecraft.client_vr.ClientDataHolderVR;
+import org.vivecraft.client_vr.provider.MCVR;
+import org.vivecraft.client_vr.provider.control.VRInputAction;
 
 /**
  * Screen for selecting which actions should be bound to a specific input.
@@ -187,6 +191,9 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
         
         // Categorize each action
         for (String action : allActions) {
+            if (!isBindableAction(action)) {
+                continue;
+            }
             String category = getActionSetCategory(action);
             actionsByCategory.get(category).add(action);
         }
@@ -199,6 +206,20 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
         }
         
         return actionsByCategory;
+    }
+
+    private boolean isBindableAction(String actionName) {
+        MCVR vr = ClientDataHolderVR.getInstance().vr;
+        if (vr == null) {
+            return false;
+        }
+
+        VRInputAction action = vr.getInputActionByName(actionName);
+        if (action == null || RuntimeBindingRouter.getInstance().isRawAction(action)) {
+            return false;
+        }
+
+        return RuntimeBindingRouter.getInstance().canBind(interactionProfile, inputPath, action.type);
     }
     
     /**

@@ -6,20 +6,24 @@ import com.google.gson.reflect.TypeToken;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.vivecraft.client_vr.provider.openxr.XRBindings;
 
-import java.io.*;
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Manages saving and loading of default VR controller bindings and keybind bindings.
- * On first launch, saves the default bindings from Vivecraft to a file.
- * On subsequent launches, loads the saved bindings from the file.
+ * Persists per-profile logical bindings and the currently active custom profile.
+ * The saved binding files are now used as the software routing table above OpenXR.
  */
 public class DefaultBindingManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("request");
@@ -28,22 +32,20 @@ public class DefaultBindingManager {
     private static final String CONFIG_FILE = "rebound_settings.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    // Unified profile groups - controllers that share the same bindings
     private static final Map<String, String> UNIFIED_PROFILES = Map.of(
-            "/interaction_profiles/oculus/touch_controller", "/interaction_profiles/oculus/touch_controller",
-            "/interaction_profiles/bytedance/pico4_controller", "/interaction_profiles/oculus/touch_controller",
-            "/interaction_profiles/bytedance/pico_neo3_controller", "/interaction_profiles/oculus/touch_controller"
+        "/interaction_profiles/oculus/touch_controller", "/interaction_profiles/oculus/touch_controller",
+        "/interaction_profiles/bytedance/pico4_controller", "/interaction_profiles/oculus/touch_controller",
+        "/interaction_profiles/bytedance/pico_neo3_controller", "/interaction_profiles/oculus/touch_controller",
+        "/interaction_profiles/samsung/odyssey_controller", "/interaction_profiles/oculus/touch_controller"
     );
 
     private static volatile DefaultBindingManager instance;
-    private final Path bindingsDirectory;
-    private final Path configDirectory;
+
+    private final Path bindingsDirectory = Paths.get(BINDINGS_DIR);
+    private final Path configDirectory = Paths.get(CONFIG_DIR);
     private final Object lock = new Object();
 
-    private DefaultBindingManager() {
-        this.bindingsDirectory = Paths.get(BINDINGS_DIR);
-        this.configDirectory = Paths.get(CONFIG_DIR);
-    }
+    private DefaultBindingManager() {}
 
     public static DefaultBindingManager getInstance() {
         if (instance == null) {
@@ -56,33 +58,18 @@ public class DefaultBindingManager {
         return instance;
     }
 
-    /**
-     * Container class for a single profile's binding data
-     */
     public static class ProfileBindingsData {
-        public List<BindingEntry> bindings = new ArrayList<>();
-
-        public ProfileBindingsData() {}
+        public java.util.List<BindingEntry> bindings = new ArrayList<>();
     }
 
-
-    /**
-     * Container class for the config file that tracks active profiles
-     */
     public static class ConfigData {
-        public BindingsConfig bindings;
-
-        public ConfigData() {
-            this.bindings = new BindingsConfig();
-        }
+        public BindingsConfig bindings = new BindingsConfig();
 
         public static class BindingsConfig {
             public String profile;
-            public String active;
+            public String active = "default";
 
-            public BindingsConfig() {
-                this.active = "default";
-            }
+            public BindingsConfig() {}
 
             public BindingsConfig(String profile, String active) {
                 this.profile = profile;
@@ -91,9 +78,6 @@ public class DefaultBindingManager {
         }
     }
 
-    /**
-     * Represents a single VR controller binding entry.
-     */
     public static class BindingEntry {
         public String action;
         public String inputPath;
@@ -106,7 +90,7 @@ public class DefaultBindingManager {
         }
 
         public Pair<String, String> toPair() {
-            return Pair.of(action, inputPath);
+            return Pair.of(this.action, this.inputPath);
         }
 
         public static BindingEntry fromPair(Pair<String, String> pair) {
@@ -114,319 +98,263 @@ public class DefaultBindingManager {
         }
     }
 
-    /**
-     * Converts an interaction profile path to a file path.
-     * Example: "/interaction_profiles/oculus/touch_controller" -> "interaction_profiles/oculus/touch_controller.json"
-     */
-    private Path getProfileFilePath(String interactionProfilePath) {
-        // Normalize to unified profile if applicable
-        String normalizedProfile = normalizeProfile(interactionProfilePath);
-        
-        // Remove leading slash if present
-        String normalizedPath = normalizedProfile.startsWith("/") ? 
-            normalizedProfile.substring(1) : normalizedProfile;
-
-        return bindingsDirectory.resolve(normalizedPath + ".json");
+    public String getUnifiedProfile(String interactionProfilePath) {
+        return normalizeProfile(interactionProfilePath);
     }
 
-    /**
-     * Normalizes an interaction profile path to its unified profile.
-     * Quest 2, Pico 4, and Pico Neo 3 all map to the Oculus Touch controller profile.
-     */
-    private String normalizeProfile(String interactionProfilePath) {
-        return UNIFIED_PROFILES.getOrDefault(interactionProfilePath, interactionProfilePath);
+    public boolean isUnifiedProfile(String interactionProfilePath) {
+        return UNIFIED_PROFILES.containsKey(interactionProfilePath) &&
+            !interactionProfilePath.equals(UNIFIED_PROFILES.get(interactionProfilePath));
     }
 
-    /**
-     * Converts a file path back to an interaction profile path.
-     * Example: "interaction_profiles/oculus/touch_controller.json" -> "/interaction_profiles/oculus/touch_controller"
-     */
-    private String filePathToProfilePath(Path filePath) {
-        String relativePath = bindingsDirectory.relativize(filePath).toString();
-        // Remove .json extension
-        if (relativePath.endsWith(".json")) {
-            relativePath = relativePath.substring(0, relativePath.length() - 5);
-        }
-        // Replace backslashes with forward slashes (for Windows)
-        relativePath = relativePath.replace('\\', '/');
-        // Add leading slash
-        return "/" + relativePath;
-    }
-
-    /**
-     * Gets the path to the config file.
-     */
-    private Path getConfigFilePath() {
-        return configDirectory.resolve(CONFIG_FILE);
-    }
-
-    /**
-     * Loads the config data from file, or returns a new empty config if file doesn't exist.
-     */
-    private ConfigData loadConfig() {
-        synchronized (lock) {
-            Path configFile = getConfigFilePath();
-
-            if (!Files.exists(configFile)) {
-                return new ConfigData();
-            }
-
-            try {
-                String json = Files.readString(configFile);
-                ConfigData config = GSON.fromJson(json, ConfigData.class);
-                return config != null ? config : new ConfigData();
-            } catch (IOException e) {
-                LOGGER.error("Failed to load config from file", e);
-                return new ConfigData();
-            }
-        }
-    }
-
-    /**
-     * Saves the config data to file.
-     */
-    private void saveConfig(ConfigData config) {
-        synchronized (lock) {
-            try {
-                Path configFile = getConfigFilePath();
-                // Create parent directories if they don't exist
-                Files.createDirectories(configFile.getParent());
-
-                String json = GSON.toJson(config);
-                Files.writeString(configFile, json);
-                LOGGER.info("Saved config to {}", configFile.toAbsolutePath());
-            } catch (IOException e) {
-                LOGGER.error("Failed to save config to file", e);
-            }
-        }
-    }
-
-    /**
-     * Gets the currently active profile name for the given interaction profile path.
-     * Returns "default" if no custom profile is set.
-     */
     public String getActiveProfile(String interactionProfilePath) {
-        synchronized (lock) {
-            // Normalize the profile first
+        synchronized (this.lock) {
             String normalizedProfile = normalizeProfile(interactionProfilePath);
-            
             ConfigData config = loadConfig();
-
-            if (config.bindings != null &&
-                    normalizedProfile.equals(config.bindings.profile)) {
+            if (config.bindings != null && normalizedProfile.equals(config.bindings.profile)) {
                 return config.bindings.active != null ? config.bindings.active : "default";
             }
-
             return "default";
         }
     }
 
-    /**
-     * Sets the active profile for the given interaction profile path.
-     * Pass "default" to use the default bindings from the interaction profile.
-     */
     public void setActiveProfile(String interactionProfilePath, String activeProfile) {
-        synchronized (lock) {
-            // Normalize the profile first
+        synchronized (this.lock) {
             String normalizedProfile = normalizeProfile(interactionProfilePath);
-            
             ConfigData config = loadConfig();
             config.bindings = new ConfigData.BindingsConfig(normalizedProfile, activeProfile);
             saveConfig(config);
-            LOGGER.info("Set active profile for {} (normalized to {}) to {}", 
-                interactionProfilePath, normalizedProfile, activeProfile);
         }
+        RuntimeBindingRouter.getInstance().reloadMappings();
     }
 
-    /**
-     * Clears the active profile configuration, resetting to default.
-     */
     public void clearActiveProfile() {
-        synchronized (lock) {
-            ConfigData config = new ConfigData();
-            saveConfig(config);
-            LOGGER.info("Cleared active profile configuration");
+        synchronized (this.lock) {
+            saveConfig(new ConfigData());
         }
+        RuntimeBindingRouter.getInstance().reloadMappings();
     }
 
-    /**
-     * Saves default VR controller bindings to file if they don't exist yet.
-     * Called from OpenXR mixin during loadDefaultBindings().
-     */
     public void saveDefaultBindingsIfNeeded(String headsetProfile, Collection<Pair<String, String>> bindings) {
-        synchronized (lock) {
-            // Normalize the profile first
+        synchronized (this.lock) {
             String normalizedProfile = normalizeProfile(headsetProfile);
             Path profileFile = getProfileFilePath(normalizedProfile);
-            
-            // Check if we already have bindings for this specific headset profile
             if (Files.exists(profileFile)) {
-                LOGGER.info("Default VR controller bindings for {} (normalized to {}) already exist, skipping save", 
-                headsetProfile, normalizedProfile);
                 return;
             }
-
-            LOGGER.info("First launch detected for {} (normalized to {}), saving default VR controller bindings", 
-            headsetProfile, normalizedProfile);
 
             ProfileBindingsData profileData = new ProfileBindingsData();
             for (Pair<String, String> binding : bindings) {
                 profileData.bindings.add(BindingEntry.fromPair(binding));
             }
-        
             saveProfileToFile(profileFile, profileData);
+            LOGGER.info("Saved initial bindings for {}", normalizedProfile);
         }
     }
 
-    /**
-     * Saves a profile's bindings to its JSON file.
-     */
-    private void saveProfileToFile(Path profileFile, ProfileBindingsData profileData) {
-        try {
-            // Create parent directories if they don't exist
-            Files.createDirectories(profileFile.getParent());
-
-            String json = GSON.toJson(profileData);
-            Files.writeString(profileFile, json);
-            LOGGER.info("Saved bindings to {}", profileFile.toAbsolutePath());
-        } catch (IOException e) {
-            LOGGER.error("Failed to save bindings to file", e);
-        }
-    }
-
-    /**
-     * Loads VR controller bindings from file if it exists.
-     * Returns the saved bindings for the specified headset profile, or null if not found.
-     */
     public Collection<Pair<String, String>> loadDefaultBindings(String headsetProfile) {
-        synchronized (lock) {
-        // Normalize the profile first
-        String normalizedProfile = normalizeProfile(headsetProfile);
-        Path profileFile = getProfileFilePath(normalizedProfile);
-        
-        if (!Files.exists(profileFile)) {
-            LOGGER.info("No saved VR controller bindings found for {} (normalized to {})", 
-                headsetProfile, normalizedProfile);
+        synchronized (this.lock) {
+            return loadBindingsFile(headsetProfile);
+        }
+    }
+
+    public Collection<Pair<String, String>> loadBindingsForActiveProfile(
+        String interactionProfilePath,
+        Collection<Pair<String, String>> fallbackBindings)
+    {
+        synchronized (this.lock) {
+            String normalizedProfile = normalizeProfile(interactionProfilePath);
+            String activeProfile = getActiveProfile(normalizedProfile);
+            String targetProfile = "default".equals(activeProfile)
+                ? normalizedProfile
+                : normalizedProfile + "/" + activeProfile;
+
+            Collection<Pair<String, String>> savedBindings = loadBindingsFile(targetProfile);
+            if (savedBindings != null) {
+                return savedBindings;
+            }
+
+            if (fallbackBindings != null) {
+                saveDefaultBindingsIfNeeded(normalizedProfile, fallbackBindings);
+                return java.util.List.copyOf(fallbackBindings);
+            }
+
             return null;
         }
+    }
 
-            try {
-                String json = Files.readString(profileFile);
-                Type type = new TypeToken<ProfileBindingsData>(){}.getType();
-                ProfileBindingsData profileData = GSON.fromJson(json, type);
-
-                if (profileData != null && profileData.bindings != null) {
-                    LOGGER.info("Loading {} saved VR controller bindings for {}", 
-                        profileData.bindings.size(), headsetProfile, normalizedProfile);
-                
-                return profileData.bindings.stream().map(BindingEntry::toPair).toList();
-            }
-        } catch (IOException e) {
-            LOGGER.error("Failed to load bindings from file for {} (normalized to {})", 
-                headsetProfile, normalizedProfile, e);
+    public boolean hasSavedBindings(String headsetProfile) {
+        synchronized (this.lock) {
+            return Files.exists(getProfileFilePath(headsetProfile));
         }
-        
-        return null;
     }
-}
 
-/**
- * Checks if we have saved VR controller bindings for the given headset profile.
- */
-public boolean hasSavedBindings(String headsetProfile) {
-    synchronized (lock) {
-        // Normalize the profile first
-        String normalizedProfile = normalizeProfile(headsetProfile);
-        Path profileFile = getProfileFilePath(normalizedProfile);
-        return Files.exists(profileFile);
-    }
-}
-
-    /**
-     * Gets all available VR controller binding profiles.
-     */
     public Set<String> getAvailableProfiles() {
-        synchronized (lock) {
+        synchronized (this.lock) {
             Set<String> profiles = new HashSet<>();
-
-            if (!Files.exists(bindingsDirectory)) {
+            if (!Files.exists(this.bindingsDirectory)) {
                 return profiles;
             }
 
-            try (Stream<Path> paths = Files.walk(bindingsDirectory)) {
+            try (Stream<Path> paths = Files.walk(this.bindingsDirectory)) {
                 paths.filter(Files::isRegularFile)
-                     .filter(path -> path.toString().endsWith(".json"))
-                     .forEach(path -> {
-                         String profilePath = filePathToProfilePath(path);
-                         profiles.add(profilePath);
-                     });
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .forEach(path -> profiles.add(filePathToProfilePath(path)));
             } catch (IOException e) {
-                LOGGER.error("Failed to list available profiles", e);
+                LOGGER.error("Failed to enumerate binding profiles", e);
             }
 
             return profiles;
         }
     }
 
-    /**
-     * Clears all saved bindings.
-     */
     public void clearSavedBindings() {
-        synchronized (lock) {
-            try {
-                if (Files.exists(bindingsDirectory)) {
-                    // Delete all files in the directory recursively
-                    try (Stream<Path> paths = Files.walk(bindingsDirectory)) {
-                        paths.sorted(Comparator.reverseOrder())
-                             .forEach(path -> {
-                                 try {
-                                     Files.delete(path);
-                                 } catch (IOException e) {
-                                     LOGGER.error("Failed to delete {}", path, e);
-                                 }
-                             });
+        synchronized (this.lock) {
+            if (!Files.exists(this.bindingsDirectory)) {
+                return;
+            }
+
+            try (Stream<Path> paths = Files.walk(this.bindingsDirectory)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.delete(path);
+                    } catch (IOException e) {
+                        LOGGER.error("Failed to delete {}", path, e);
                     }
-                    LOGGER.info("Cleared all saved bindings");
-                }
+                });
             } catch (IOException e) {
-                LOGGER.error("Failed to clear bindings directory", e);
+                LOGGER.error("Failed to clear saved bindings", e);
             }
         }
+        RuntimeBindingRouter.getInstance().reloadMappings();
     }
 
-    /**
-     * Saves VR controller bindings for a specific profile.
-     */
     public void saveBindingsForProfile(String headsetProfile, Collection<Pair<String, String>> bindings) {
-        synchronized (lock) {
-            // Normalize the profile first
-            String normalizedProfile = normalizeProfile(headsetProfile);
-            Path profileFile = getProfileFilePath(normalizedProfile);
-
+        synchronized (this.lock) {
+            Path profileFile = getProfileFilePath(headsetProfile);
             ProfileBindingsData profileData = new ProfileBindingsData();
             for (Pair<String, String> binding : bindings) {
                 profileData.bindings.add(BindingEntry.fromPair(binding));
             }
-            
             saveProfileToFile(profileFile, profileData);
-            LOGGER.info("Saved {} VR controller bindings for {} (normalized to {})", 
-                profileData.bindings.size(), headsetProfile, normalizedProfile);
+        }
+        RuntimeBindingRouter.getInstance().reloadMappings();
+    }
+
+    public boolean swapJoystickBindings(String interactionProfilePath) {
+        String normalizedProfile = normalizeProfile(interactionProfilePath);
+        Collection<Pair<String, String>> currentBindings = loadBindingsForActiveProfile(normalizedProfile, null);
+        if (currentBindings == null || currentBindings.isEmpty()) {
+            return false;
+        }
+
+        String leftBasePath = joystickBasePath(normalizedProfile, true);
+        String rightBasePath = joystickBasePath(normalizedProfile, false);
+
+        List<Pair<String, String>> swappedBindings = currentBindings.stream()
+            .map(binding -> Pair.of(binding.getLeft(), swapPath(binding.getRight(), leftBasePath, rightBasePath)))
+            .toList();
+
+        saveBindingsForProfile(normalizedProfile, swappedBindings);
+        return true;
+    }
+
+    private String normalizeProfile(String interactionProfilePath) {
+        return UNIFIED_PROFILES.getOrDefault(interactionProfilePath, interactionProfilePath);
+    }
+
+    private String joystickBasePath(String profile, boolean left) {
+        String hand = left ? "left" : "right";
+        return switch (profile) {
+            case "/interaction_profiles/oculus/touch_controller",
+                 "/interaction_profiles/htc/vive_cosmos_controller" ->
+                "/user/hand/" + hand + "/input/thumbstick";
+            default -> "/user/hand/" + hand + "/input/trackpad";
+        };
+    }
+
+    private String swapPath(String inputPath, String leftBasePath, String rightBasePath) {
+        if (inputPath.startsWith(leftBasePath)) {
+            return rightBasePath + inputPath.substring(leftBasePath.length());
+        }
+        if (inputPath.startsWith(rightBasePath)) {
+            return leftBasePath + inputPath.substring(rightBasePath.length());
+        }
+        return inputPath;
+    }
+
+    private Path getProfileFilePath(String interactionProfilePath) {
+        String normalizedProfile = normalizeProfile(interactionProfilePath);
+        String normalizedPath = normalizedProfile.startsWith("/")
+            ? normalizedProfile.substring(1)
+            : normalizedProfile;
+        return this.bindingsDirectory.resolve(normalizedPath + ".json");
+    }
+
+    private String filePathToProfilePath(Path filePath) {
+        String relativePath = this.bindingsDirectory.relativize(filePath).toString().replace('\\', '/');
+        if (relativePath.endsWith(".json")) {
+            relativePath = relativePath.substring(0, relativePath.length() - 5);
+        }
+        return "/" + relativePath;
+    }
+
+    private Path getConfigFilePath() {
+        return this.configDirectory.resolve(CONFIG_FILE);
+    }
+
+    private ConfigData loadConfig() {
+        Path configFile = getConfigFilePath();
+        if (!Files.exists(configFile)) {
+            return new ConfigData();
+        }
+
+        try {
+            String json = Files.readString(configFile);
+            ConfigData config = GSON.fromJson(json, ConfigData.class);
+            return config != null ? config : new ConfigData();
+        } catch (IOException e) {
+            LOGGER.error("Failed to load {}", configFile.toAbsolutePath(), e);
+            return new ConfigData();
         }
     }
 
-    /**
-     * Gets the unified profile path for a given interaction profile.
-     * Useful for displaying to users which profiles are unified.
-     */
-    public String getUnifiedProfile(String interactionProfilePath) {
-        return normalizeProfile(interactionProfilePath);
+    private void saveConfig(ConfigData config) {
+        try {
+            Path configFile = getConfigFilePath();
+            Files.createDirectories(configFile.getParent());
+            Files.writeString(configFile, GSON.toJson(config));
+        } catch (IOException e) {
+            LOGGER.error("Failed to save config", e);
+        }
     }
 
-    /**
-     * Checks if the given interaction profile is part of a unified group.
-     */
-    public boolean isUnifiedProfile(String interactionProfilePath) {
-        return UNIFIED_PROFILES.containsKey(interactionProfilePath) &&
-           !interactionProfilePath.equals(UNIFIED_PROFILES.get(interactionProfilePath));
+    private Collection<Pair<String, String>> loadBindingsFile(String headsetProfile) {
+        Path profileFile = getProfileFilePath(headsetProfile);
+        if (!Files.exists(profileFile)) {
+            return null;
+        }
+
+        try {
+            String json = Files.readString(profileFile);
+            Type type = new TypeToken<ProfileBindingsData>() {}.getType();
+            ProfileBindingsData profileData = GSON.fromJson(json, type);
+            if (profileData == null || profileData.bindings == null) {
+                return null;
+            }
+            return profileData.bindings.stream().map(BindingEntry::toPair).toList();
+        } catch (IOException e) {
+            LOGGER.error("Failed to load bindings from {}", profileFile.toAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    private void saveProfileToFile(Path profileFile, ProfileBindingsData profileData) {
+        try {
+            Files.createDirectories(profileFile.getParent());
+            Files.writeString(profileFile, GSON.toJson(profileData));
+        } catch (IOException e) {
+            LOGGER.error("Failed to save bindings to {}", profileFile.toAbsolutePath(), e);
+        }
     }
 }

@@ -2,6 +2,7 @@ package dev.therealflo.client.screens;
 
 import dev.therealflo.client.DefaultBindingManager;
 import dev.therealflo.client.InputPathDescriptions;
+import org.vivecraft.client_vr.provider.openxr.XRBindings;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.Components;
 import io.wispforest.owo.ui.container.Containers;
@@ -58,7 +59,7 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         
         // Load current bindings
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
-        allBindings = manager.loadDefaultBindings(interactionProfile);
+        allBindings = manager.loadBindingsForActiveProfile(interactionProfile, XRBindings.getBinding(interactionProfile));
         
         if (allBindings == null || allBindings.isEmpty()) {
             mainContainer.child(
@@ -73,8 +74,12 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         Map<String, List<String>> inputToActions = buildInputToActionsMap(allBindings);
         
         // Get all available inputs for this controller
-        Map<String, InputPathDescriptions.InputDescription> allInputs = 
-                InputPathDescriptions.getAllInputs(interactionProfile);
+        Map<String, InputPathDescriptions.InputDescription> allInputs = new LinkedHashMap<>(
+                InputPathDescriptions.getAllInputs(interactionProfile)
+        );
+        for (Pair<String, String> binding : allBindings) {
+            allInputs.putIfAbsent(binding.getRight(), InputPathDescriptions.getDescription(interactionProfile, binding.getRight()));
+        }
         
         // Create scrollable container for the grid
         ScrollContainer<FlowLayout> scrollContainer = Containers.verticalScroll(
@@ -102,11 +107,16 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         scrollContent.child(headerGrid.margins(Insets.bottom(5)));
         
         // Group inputs by hand for better organization
-        Map<String, Map<String, InputPathDescriptions.InputDescription>> byHand = 
-                InputPathDescriptions.getInputsByHand(interactionProfile);
+        Map<String, Map<String, InputPathDescriptions.InputDescription>> byHand = new LinkedHashMap<>();
+        byHand.put("Left", new LinkedHashMap<>());
+        byHand.put("Right", new LinkedHashMap<>());
+        byHand.put("Unknown", new LinkedHashMap<>());
+        for (Map.Entry<String, InputPathDescriptions.InputDescription> entry : allInputs.entrySet()) {
+            byHand.computeIfAbsent(entry.getValue().hand, ignored -> new LinkedHashMap<>()).put(entry.getKey(), entry.getValue());
+        }
         
         // Create sections for each hand
-        for (String hand : Arrays.asList("Left", "Right")) {
+        for (String hand : Arrays.asList("Left", "Right", "Unknown")) {
             Map<String, InputPathDescriptions.InputDescription> handInputs = byHand.get(hand);
             
             if (handInputs.isEmpty()) continue;
@@ -126,11 +136,6 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
                 
                 // Get actions bound to this input (only game/mod keys)
                 List<String> boundActions = inputToActions.getOrDefault(inputPath, new ArrayList<>());
-                
-                // Skip axis inputs (thumbstick/trackpad without /click)
-                if (InputPathDescriptions.isAxisInput(inputPath)) {
-                    continue;
-                }
                 
                 // Validate bindings
                 ValidationResult validation = validateBindings(inputPath, allBindings);

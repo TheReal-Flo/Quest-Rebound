@@ -1,5 +1,6 @@
 {
   "key.request.open_reload": "Open Reload Screen [DO NOT USE]",
   "key.request.open_binding": "Open VR Bindings Menu",
-  "key.categories.request": "Quest: Rebound"
+  "key.categories.request": "Quest: Rebound",
+  "button.request.swap_joysticks": "Swap Joysticks"
 }

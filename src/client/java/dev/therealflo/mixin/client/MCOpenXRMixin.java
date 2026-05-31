@@ -1,98 +1,123 @@
 package dev.therealflo.mixin.client;
 
 import dev.therealflo.client.DefaultBindingManager;
-import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.RuntimeBindingRouter;
 import dev.therealflo.client.api.MCOpenXRReload;
 import org.apache.commons.lang3.tuple.Pair;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.gen.Invoker;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.vivecraft.client_vr.ClientDataHolderVR;
+import org.vivecraft.client_vr.gameplay.screenhandlers.KeyboardHandler;
+import org.vivecraft.client_vr.gameplay.screenhandlers.RadialHandler;
+import org.vivecraft.client_vr.provider.control.VRInputAction;
+import org.vivecraft.client_vr.provider.control.VRInputActionSet;
 import org.vivecraft.client_vr.provider.openxr.MCOpenXR;
 import org.vivecraft.client_vr.provider.openxr.XRBindings;
 
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.function.Consumer;
 
-/**
- * Mixin for MCOpenXR to intercept the loadDefaultBindings method.
- * On first launch, saves the default bindings to a file.
- * On subsequent launches, loads the saved bindings from the file instead of using hardcoded ones.
- */
 @Mixin(value = MCOpenXR.class, remap = false)
 public abstract class MCOpenXRMixin implements MCOpenXRReload {
 
-    /**
-     * Invokes MCOpenXR.loadActionHandles(), which builds actions, suggests bindings, attaches action sets,
-     * and sets up controller action spaces based on current XRBindings.
-     */
-    @Invoker("loadActionHandles")
-    protected abstract void vivecraft$invokeLoadActionHandles();
+    @Shadow public abstract void readNewData(VRInputAction action);
 
-    /**
-     * Invokes MCOpenXR.loadDefaultBindings() to reload the bindings from files.
-     */
-    @Invoker("loadDefaultBindings")
-    protected abstract void vivecraft$invokeLoadDefaultBindings();
+    @Shadow public String systemName;
+
+    @Unique
+    private String request$lastKnownProfile = RuntimeBindingRouter.OCULUS_TOUCH_PROFILE;
 
     @Override
     public void reloadXRBindings() {
-        // First, reload the bindings from the config files (this will trigger our redirect)
-        this.vivecraft$invokeLoadDefaultBindings();
-        
-        // Then, rerun Vivecraft's binding setup pipeline on the current OpenXR session
-        this.vivecraft$invokeLoadActionHandles();
+        RuntimeBindingRouter.getInstance().reloadMappings();
     }
 
-    /**
-     * Redirects the XRBindings.getBinding() call to use our saved bindings if available.
-     * This allows us to load custom bindings from file instead of the hardcoded defaults.
-     */
-    @Redirect(method = "loadDefaultBindings", at = @At(value = "INVOKE",
-            target = "Lorg/vivecraft/client_vr/provider/openxr/XRBindings;getBinding(Ljava/lang/String;)Ljava/util/HashSet;"))
-    private HashSet<Pair<String, String>> redirectGetBinding(String headset) {
-        DefaultBindingManager manager = DefaultBindingManager.getInstance();
-        
-        // Check if there's an active custom profile set in the config
-        String activeProfile = manager.getActiveProfile(headset);
-        
-        // If active profile is not "default", try to load the custom profile
-        if (!"default".equals(activeProfile)) {
-            // Build the custom profile path
-            String customProfilePath = headset + "/" + activeProfile;
-            Collection<Pair<String, String>> customBindings = manager.loadDefaultBindings(customProfilePath);
-            
-            if (customBindings != null) {
-                RequestModClient.LOGGER.info("[ReQuest] Loading custom profile '{}' for {}", activeProfile, headset);
-                return new HashSet<>(customBindings);
-            } else {
-                RequestModClient.LOGGER.warn("[ReQuest] Custom profile '{}' not found for {}, falling back to default",
-                    activeProfile, headset);
+    @Redirect(
+        method = "loadDefaultBindings",
+        at = @At(
+            value = "INVOKE",
+            target = "Lorg/vivecraft/client_vr/provider/openxr/XRBindings;getBinding(Ljava/lang/String;)Ljava/util/HashSet;"
+        )
+    )
+    private HashSet<Pair<String, String>> request$bindRawSuperset(String headset) {
+        Collection<Pair<String, String>> defaults = XRBindings.getBinding(headset);
+        DefaultBindingManager.getInstance().saveDefaultBindingsIfNeeded(headset, defaults);
+        return new HashSet<>(RuntimeBindingRouter.getInstance().getRawBindingsForProfile(headset));
+    }
+
+    @Redirect(
+        method = "updatePose",
+        at = @At(value = "INVOKE", target = "Ljava/util/Collection;forEach(Ljava/util/function/Consumer;)V")
+    )
+    private void request$routeInputReads(Collection<VRInputAction> actions, Consumer<VRInputAction> consumer) {
+        RuntimeBindingRouter router = RuntimeBindingRouter.getInstance();
+        EnumSet<VRInputActionSet> activeActionSets = request$getActiveActionSets();
+        String interactionProfile = request$getCurrentInteractionProfile();
+        Map<String, VRInputAction> inputActions = ((MCVRAccessor) this).request$getInputActions();
+
+        for (VRInputAction action : actions) {
+            if (router.isRawAction(action)) {
+                this.readNewData(action);
             }
         }
-        
-        // Try to load saved default bindings
-        Collection<Pair<String, String>> savedBindings = manager.loadDefaultBindings(headset);
-        
-        if (savedBindings != null) {
-            // Return saved default bindings
-            return new HashSet<>(savedBindings);
+
+        for (VRInputAction action : actions) {
+            if (router.isRawAction(action)) {
+                continue;
+            }
+
+            if ("boolean".equals(action.type) || "vector1".equals(action.type) || "vector2".equals(action.type)) {
+                router.routeLogicalAction(action, inputActions, interactionProfile, activeActionSets);
+            } else {
+                this.readNewData(action);
+            }
         }
-        
-        // If no saved bindings exist, get the default ones and save them
-        HashSet<Pair<String, String>> defaultBindings = XRBindings.getBinding(headset);
-        manager.saveDefaultBindingsIfNeeded(headset, defaultBindings);
-        
-        return defaultBindings;
     }
 
-    /**
-     * Optional: Inject at the start of loadDefaultBindings to log what's happening.
-     */
-    @Inject(method = "loadDefaultBindings", at = @At("HEAD"))
-    private void onLoadDefaultBindingsStart(CallbackInfo ci) {
-        DefaultBindingManager.getInstance();
+    @Unique
+    private EnumSet<VRInputActionSet> request$getActiveActionSets() {
+        var minecraft = ((MCVRAccessor) this).request$getMinecraftClient();
+        EnumSet<VRInputActionSet> activeSets = EnumSet.of(
+            VRInputActionSet.GLOBAL,
+            VRInputActionSet.MOD,
+            VRInputActionSet.MIXED_REALITY,
+            VRInputActionSet.TECHNICAL
+        );
+
+        if (minecraft.currentScreen == null) {
+            activeSets.add(VRInputActionSet.INGAME);
+            activeSets.add(VRInputActionSet.CONTEXTUAL);
+        } else {
+            activeSets.add(VRInputActionSet.GUI);
+            if (ClientDataHolderVR.getInstance().vrSettings.ingameBindingsInGui) {
+                activeSets.add(VRInputActionSet.INGAME);
+            }
+        }
+
+        if (KeyboardHandler.SHOWING || RadialHandler.isShowing()) {
+            activeSets.add(VRInputActionSet.KEYBOARD);
+        }
+
+        return activeSets;
+    }
+
+    @Unique
+    private String request$getCurrentInteractionProfile() {
+        String detectedProfile = request$guessInteractionProfile();
+        if (!detectedProfile.isBlank()) {
+            this.request$lastKnownProfile = detectedProfile;
+        }
+        return this.request$lastKnownProfile;
+    }
+
+    @Unique
+    private String request$guessInteractionProfile() {
+        return RuntimeBindingRouter.guessProfileFromSystemName(this.systemName);
     }
 }
