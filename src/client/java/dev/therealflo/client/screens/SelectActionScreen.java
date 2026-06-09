@@ -28,17 +28,19 @@ import org.vivecraft.client_vr.provider.control.VRInputAction;
 public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
     private final Screen parentScreen;
     private final String interactionProfile;
+    private final String setId;
     private final String inputPath;
     private final InputPathDescriptions.InputDescription inputDesc;
     private final Collection<Pair<String, String>> allBindings;
     private final Set<String> currentlyBoundActions;
     private final Map<String, CheckboxComponent> actionCheckboxes = new LinkedHashMap<>();
 
-    public SelectActionScreen(Screen parentScreen, String interactionProfile, String inputPath,
+    public SelectActionScreen(Screen parentScreen, String interactionProfile, String setId, String inputPath,
                                InputPathDescriptions.InputDescription inputDesc,
                                Collection<Pair<String, String>> allBindings) {
         this.parentScreen = parentScreen;
         this.interactionProfile = interactionProfile;
+        this.setId = setId;
         this.inputPath = inputPath;
         this.inputDesc = inputDesc;
         this.allBindings = allBindings;
@@ -95,6 +97,7 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
         
         FlowLayout scrollContent = (FlowLayout) scrollContainer.child();
         scrollContent.padding(Insets.of(5));
+        boolean hasAnyActions = false;
         
         // Create sections for each category
         for (Map.Entry<String, List<String>> entry : actionsByCategory.entrySet()) {
@@ -102,6 +105,7 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
             List<String> actions = entry.getValue();
             
             if (actions.isEmpty()) continue;
+            hasAnyActions = true;
             
             // Category header
             scrollContent.child(
@@ -125,6 +129,14 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
                 
                 scrollContent.child(checkbox);
             }
+        }
+
+        if (!hasAnyActions) {
+            scrollContent.child(
+                    Components.label(Text.translatable("text.request.no_bindable_actions"))
+                            .color(Color.ofRgb(0xFF8888))
+                            .margins(Insets.top(8))
+            );
         }
         
         mainContainer.child(scrollContainer);
@@ -284,7 +296,7 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
         
         // Save the new bindings
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
-        manager.saveBindingsForProfile(interactionProfile, newBindings);
+        manager.saveBindingsForSet(interactionProfile, setId, newBindings);
         
         System.out.println("Saved " + newBindings.size() + " bindings for " + interactionProfile);
         System.out.println("Input " + inputPath + " now has " + selectedActions.size() + " actions bound");

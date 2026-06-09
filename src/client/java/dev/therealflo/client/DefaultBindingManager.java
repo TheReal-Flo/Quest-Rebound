@@ -165,11 +165,7 @@ public class DefaultBindingManager {
         synchronized (this.lock) {
             String normalizedProfile = normalizeProfile(interactionProfilePath);
             String activeProfile = getActiveProfile(normalizedProfile);
-            String targetProfile = "default".equals(activeProfile)
-                ? normalizedProfile
-                : normalizedProfile + "/" + activeProfile;
-
-            Collection<Pair<String, String>> savedBindings = loadBindingsFile(targetProfile);
+            Collection<Pair<String, String>> savedBindings = loadBindingsForSet(normalizedProfile, activeProfile, null);
             if (savedBindings != null) {
                 return savedBindings;
             }
@@ -241,9 +237,58 @@ public class DefaultBindingManager {
         RuntimeBindingRouter.getInstance().reloadMappings();
     }
 
-    public boolean swapJoystickBindings(String interactionProfilePath) {
+    public Collection<Pair<String, String>> loadBindingsForSet(
+        String interactionProfilePath,
+        String setId,
+        Collection<Pair<String, String>> fallbackBindings)
+    {
+        synchronized (this.lock) {
+            String normalizedProfile = normalizeProfile(interactionProfilePath);
+            String normalizedSetId = normalizeSetId(setId);
+            Collection<Pair<String, String>> savedBindings = loadBindingsFileForSet(normalizedProfile, normalizedSetId);
+            if (savedBindings != null) {
+                return savedBindings;
+            }
+
+            if (fallbackBindings != null) {
+                if ("default".equals(normalizedSetId)) {
+                    saveDefaultBindingsIfNeeded(normalizedProfile, fallbackBindings);
+                }
+                return List.copyOf(fallbackBindings);
+            }
+
+            return null;
+        }
+    }
+
+    public void saveBindingsForSet(String interactionProfilePath, String setId, Collection<Pair<String, String>> bindings) {
+        synchronized (this.lock) {
+            Path profileFile = getSetFilePath(interactionProfilePath, setId);
+            ProfileBindingsData profileData = new ProfileBindingsData();
+            for (Pair<String, String> binding : bindings) {
+                profileData.bindings.add(BindingEntry.fromPair(binding));
+            }
+            saveProfileToFile(profileFile, profileData);
+        }
+        RuntimeBindingRouter.getInstance().reloadMappings();
+    }
+
+    public void deleteBindingsForSet(String interactionProfilePath, String setId) {
+        synchronized (this.lock) {
+            Path profileFile = getSetFilePath(interactionProfilePath, setId);
+            try {
+                Files.deleteIfExists(profileFile);
+            } catch (IOException e) {
+                LOGGER.error("Failed to delete bindings for set {}", setId, e);
+            }
+        }
+        RuntimeBindingRouter.getInstance().reloadMappings();
+    }
+
+    public boolean swapJoystickBindings(String interactionProfilePath, String setId) {
         String normalizedProfile = normalizeProfile(interactionProfilePath);
-        Collection<Pair<String, String>> currentBindings = loadBindingsForActiveProfile(normalizedProfile, null);
+        String normalizedSetId = normalizeSetId(setId);
+        Collection<Pair<String, String>> currentBindings = loadBindingsForSet(normalizedProfile, normalizedSetId, null);
         if (currentBindings == null || currentBindings.isEmpty()) {
             return false;
         }
@@ -255,7 +300,7 @@ public class DefaultBindingManager {
             .map(binding -> Pair.of(binding.getLeft(), swapPath(binding.getRight(), leftBasePath, rightBasePath)))
             .toList();
 
-        saveBindingsForProfile(normalizedProfile, swappedBindings);
+        saveBindingsForSet(normalizedProfile, normalizedSetId, swappedBindings);
         return true;
     }
 
@@ -291,6 +336,19 @@ public class DefaultBindingManager {
         return this.bindingsDirectory.resolve(normalizedPath + ".json");
     }
 
+    private Path getSetFilePath(String interactionProfilePath, String setId) {
+        String normalizedProfile = normalizeProfile(interactionProfilePath);
+        String normalizedSetId = normalizeSetId(setId);
+        if ("default".equals(normalizedSetId)) {
+            return getProfileFilePath(normalizedProfile);
+        }
+
+        String normalizedPath = normalizedProfile.startsWith("/")
+            ? normalizedProfile.substring(1)
+            : normalizedProfile;
+        return this.bindingsDirectory.resolve(normalizedPath).resolve(normalizedSetId + ".json");
+    }
+
     private String filePathToProfilePath(Path filePath) {
         String relativePath = this.bindingsDirectory.relativize(filePath).toString().replace('\\', '/');
         if (relativePath.endsWith(".json")) {
@@ -301,6 +359,13 @@ public class DefaultBindingManager {
 
     private Path getConfigFilePath() {
         return this.configDirectory.resolve(CONFIG_FILE);
+    }
+
+    private String normalizeSetId(String setId) {
+        if (setId == null || setId.isBlank()) {
+            return "default";
+        }
+        return setId;
     }
 
     private ConfigData loadConfig() {
@@ -331,6 +396,14 @@ public class DefaultBindingManager {
 
     private Collection<Pair<String, String>> loadBindingsFile(String headsetProfile) {
         Path profileFile = getProfileFilePath(headsetProfile);
+        return loadBindingsFile(profileFile);
+    }
+
+    private Collection<Pair<String, String>> loadBindingsFileForSet(String interactionProfilePath, String setId) {
+        return loadBindingsFile(getSetFilePath(interactionProfilePath, setId));
+    }
+
+    private Collection<Pair<String, String>> loadBindingsFile(Path profileFile) {
         if (!Files.exists(profileFile)) {
             return null;
         }

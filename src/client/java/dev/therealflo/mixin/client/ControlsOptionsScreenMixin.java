@@ -1,8 +1,10 @@
 package dev.therealflo.mixin.client;
 
+import dev.therealflo.client.BindingSetRegistry;
 import dev.therealflo.client.DefaultBindingManager;
 import dev.therealflo.client.RequestModClient;
 import dev.therealflo.client.screens.ChangeBindingScreen;
+import dev.therealflo.client.screens.BindingSetManagerScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -25,18 +27,26 @@ public abstract class ControlsOptionsScreenMixin extends Screen {
         int gap = 4;
         int x = this.width / 2 - w - gap / 2;
         int y = this.height - 128;
+        String profile = RequestModClient.getPreferredInteractionProfile();
 
         this.addDrawableChild(
-                ButtonWidget.builder(Text.translatable("key.request.open_binding"),
-                                b -> MinecraftClient.getInstance().setScreen(new ChangeBindingScreen()))
+                ButtonWidget.builder(Text.translatable("button.request.manage_sets"),
+                                b -> MinecraftClient.getInstance().setScreen(new BindingSetManagerScreen((Screen) (Object) this, profile)))
                         .dimensions(x, y, w, h)
                         .build()
         );
 
         this.addDrawableChild(
-                ButtonWidget.builder(Text.translatable("button.request.swap_joysticks"),
-                                b -> request$swapJoysticks())
+                ButtonWidget.builder(Text.translatable("key.request.open_binding"),
+                                b -> MinecraftClient.getInstance().setScreen(new ChangeBindingScreen((Screen) (Object) this, profile)))
                         .dimensions(x + w + gap, y, w, h)
+                        .build()
+        );
+
+        this.addDrawableChild(
+                ButtonWidget.builder(Text.translatable("button.request.swap_joysticks"),
+                                b -> request$swapJoysticks(profile))
+                        .dimensions(x, y + h + gap, w * 2 + gap, h)
                         .build()
         );
     }
@@ -47,9 +57,10 @@ public abstract class ControlsOptionsScreenMixin extends Screen {
         super.render(ctx, mx, my, delta);
     }
 
-    private void request$swapJoysticks() {
+    private void request$swapJoysticks(String profile) {
+        String activeSetId = BindingSetRegistry.getInstance().getActiveSetId(profile);
         boolean swapped = DefaultBindingManager.getInstance()
-                .swapJoystickBindings(RequestModClient.getPreferredInteractionProfile());
+                .swapJoystickBindings(profile, activeSetId);
 
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player != null) {

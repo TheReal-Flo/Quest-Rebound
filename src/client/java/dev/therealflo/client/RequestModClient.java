@@ -1,17 +1,14 @@
 package dev.therealflo.client;
 
 import dev.therealflo.client.screens.ChangeBindingScreen;
+import dev.therealflo.client.screens.BindingSetManagerScreen;
 import dev.therealflo.client.screens.ReloadBindingsScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.minecraft.client.gui.screen.option.ControlsOptionsScreen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +20,6 @@ import org.vivecraft.client_vr.provider.openxr.MCOpenXR;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class RequestModClient implements ClientModInitializer {
     private boolean registered = false;
@@ -33,6 +29,7 @@ public class RequestModClient implements ClientModInitializer {
     private static final String CATEGORY = "key.categories.request";
     public static KeyBinding openReloadScreenKey;
     public static KeyBinding openBindingScreenKey;
+    public static KeyBinding cycleBindingSetKey;
 
     public static void logInfo(String s) {
         LOGGER.info("[ReQuest] {}", s);
@@ -113,6 +110,13 @@ public class RequestModClient implements ClientModInitializer {
                 CATEGORY                // Category translation key
         ));
 
+        cycleBindingSetKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.request.cycle_binding_set",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_UNKNOWN,
+                CATEGORY
+        ));
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (openReloadScreenKey.wasPressed()) {
                 client.execute(() -> client.setScreen(new ReloadBindingsScreen()));
@@ -120,6 +124,10 @@ public class RequestModClient implements ClientModInitializer {
 
             if (openBindingScreenKey.wasPressed()) {
                 client.execute(() -> client.setScreen(new ChangeBindingScreen()));
+            }
+
+            while (cycleBindingSetKey.wasPressed()) {
+                client.execute(this::cycleBindingSet);
             }
 
             if (registered) return;
@@ -144,5 +152,22 @@ public class RequestModClient implements ClientModInitializer {
             }
         }
         logInfo("Runtime rebinding ready with " + actionCount + " logical actions");
+    }
+
+    private void cycleBindingSet() {
+        String profile = getPreferredInteractionProfile();
+        BindingSetRegistry registry = BindingSetRegistry.getInstance();
+        String setId = registry.cycleNextEnabledSet(profile);
+        if (setId == null) {
+            return;
+        }
+
+        var client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client.player != null) {
+            client.player.sendMessage(
+                    Text.translatable("message.request.binding_set_switched", registry.getSetDisplayName(profile, setId)),
+                    false
+            );
+        }
     }
 }

@@ -169,12 +169,14 @@ public final class RuntimeBindingRouter {
             String normalizedProfile = DefaultBindingManager.getInstance().getUnifiedProfile(
                 interactionProfile == null || interactionProfile.isBlank() ? OCULUS_TOUCH_PROFILE : interactionProfile
             );
+            String activeSetId = BindingSetRegistry.getInstance().getActiveSetId(normalizedProfile);
+            String cacheKey = normalizedProfile + "|" + activeSetId;
 
-            return this.routeCacheByProfile.computeIfAbsent(normalizedProfile, profile -> {
+            return this.routeCacheByProfile.computeIfAbsent(cacheKey, ignored -> {
                 Collection<Pair<String, String>> fallbackBindings =
-                    this.defaultBindingsByProfile.getOrDefault(profile, XRBindings.getBinding(profile));
+                    this.defaultBindingsByProfile.getOrDefault(normalizedProfile, XRBindings.getBinding(normalizedProfile));
                 Collection<Pair<String, String>> configuredBindings = DefaultBindingManager.getInstance()
-                    .loadBindingsForActiveProfile(profile, fallbackBindings);
+                    .loadBindingsForSet(normalizedProfile, activeSetId, fallbackBindings);
 
                 Map<String, List<RouteSource>> routes = new HashMap<>();
                 if (configuredBindings == null) {
@@ -194,7 +196,7 @@ public final class RuntimeBindingRouter {
                         continue;
                     }
 
-                    routes.computeIfAbsent(logicalAction.name, ignored -> new ArrayList<>())
+                    routes.computeIfAbsent(logicalAction.name, key -> new ArrayList<>())
                         .add(new RouteSource(rawDefinition.actionName(), handForPath(binding.getRight())));
                 }
 
@@ -401,6 +403,7 @@ public final class RuntimeBindingRouter {
             Collection<Pair<String, String>> defaultBindings = XRBindings.getBinding(profile);
             this.defaultBindingsByProfile.put(bindingManager.getUnifiedProfile(profile), List.copyOf(defaultBindings));
             bindingManager.saveDefaultBindingsIfNeeded(profile, defaultBindings);
+            Map<String, InputPathDescriptions.InputDescription> availableInputs = InputPathDescriptions.getAllInputs(profile);
 
             Set<Pair<String, String>> rawBindings = new LinkedHashSet<>();
             for (Pair<String, String> binding : defaultBindings) {
@@ -409,16 +412,25 @@ public final class RuntimeBindingRouter {
                     continue;
                 }
 
-                RawBindingKey rawKey = new RawBindingKey(binding.getRight(), logicalAction.type);
-                RawActionDefinition definition = this.rawDefinitionsByKey.computeIfAbsent(rawKey, this::createDefinition);
-                this.rawDefinitionsByActionName.put(definition.actionName(), definition);
-                rawBindings.add(Pair.of(definition.actionName(), binding.getRight()));
+                registerRawBinding(rawBindings, binding.getRight(), logicalAction.type);
+
+                String mirroredPath = mirrorHandPath(binding.getRight());
+                if (mirroredPath != null && availableInputs.containsKey(mirroredPath)) {
+                    registerRawBinding(rawBindings, mirroredPath, logicalAction.type);
+                }
             }
 
             this.rawBindingsByProfile.put(profile, rawBindings);
         }
 
         this.rawDefinitionsBuilt = true;
+    }
+
+    private void registerRawBinding(Set<Pair<String, String>> rawBindings, String inputPath, String actionType) {
+        RawBindingKey rawKey = new RawBindingKey(inputPath, actionType);
+        RawActionDefinition definition = this.rawDefinitionsByKey.computeIfAbsent(rawKey, this::createDefinition);
+        this.rawDefinitionsByActionName.put(definition.actionName(), definition);
+        rawBindings.add(Pair.of(definition.actionName(), inputPath));
     }
 
     private RawActionDefinition createDefinition(RawBindingKey rawKey) {
@@ -444,6 +456,16 @@ public final class RuntimeBindingRouter {
         }
         if (inputPath.contains("/user/hand/left/")) {
             return ControllerType.LEFT;
+        }
+        return null;
+    }
+
+    private static String mirrorHandPath(String inputPath) {
+        if (inputPath.contains("/user/hand/right/")) {
+            return inputPath.replace("/user/hand/right/", "/user/hand/left/");
+        }
+        if (inputPath.contains("/user/hand/left/")) {
+            return inputPath.replace("/user/hand/left/", "/user/hand/right/");
         }
         return null;
     }

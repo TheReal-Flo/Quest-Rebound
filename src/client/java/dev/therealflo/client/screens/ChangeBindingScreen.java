@@ -1,7 +1,9 @@
 package dev.therealflo.client.screens;
 
+import dev.therealflo.client.BindingSetRegistry;
 import dev.therealflo.client.DefaultBindingManager;
 import dev.therealflo.client.InputPathDescriptions;
+import dev.therealflo.client.RequestModClient;
 import org.vivecraft.client_vr.provider.openxr.XRBindings;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.Components;
@@ -10,6 +12,7 @@ import io.wispforest.owo.ui.container.FlowLayout;
 import io.wispforest.owo.ui.container.GridLayout;
 import io.wispforest.owo.ui.container.ScrollContainer;
 import io.wispforest.owo.ui.core.*;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -21,16 +24,27 @@ import java.util.*;
  * Shows all controller inputs with their currently bound actions (game/mod keys only).
  */
 public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
-    private String interactionProfile;
-    private Collection<Pair<String, String>> allBindings; // Store all bindings for validation
+    private final Screen parentScreen;
+    private final String interactionProfile;
+    private final String setId;
+    private Collection<Pair<String, String>> allBindings;
     
     public ChangeBindingScreen() {
-        // Default to Quest/Pico controllers
-        this.interactionProfile = "/interaction_profiles/oculus/touch_controller";
+        this(null, RequestModClient.getPreferredInteractionProfile());
     }
     
     public ChangeBindingScreen(String interactionProfile) {
+        this(null, interactionProfile);
+    }
+
+    public ChangeBindingScreen(Screen parentScreen, String interactionProfile) {
+        this(parentScreen, interactionProfile, BindingSetRegistry.getInstance().getActiveSetId(interactionProfile));
+    }
+
+    public ChangeBindingScreen(Screen parentScreen, String interactionProfile, String setId) {
+        this.parentScreen = parentScreen;
         this.interactionProfile = interactionProfile;
+        this.setId = setId;
     }
 
     @Override
@@ -51,7 +65,8 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         
         // Title
         mainContainer.child(
-                Components.label(Text.literal("Controller Bindings"))
+                Components.label(Text.literal("Controller Bindings: " +
+                        BindingSetRegistry.getInstance().getSetDisplayName(interactionProfile, setId)))
                         .color(Color.ofRgb(0xFFFFFF))
                         .shadow(true)
                         .margins(Insets.bottom(10))
@@ -59,7 +74,7 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         
         // Load current bindings
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
-        allBindings = manager.loadBindingsForActiveProfile(interactionProfile, XRBindings.getBinding(interactionProfile));
+        allBindings = manager.loadBindingsForSet(interactionProfile, setId, XRBindings.getBinding(interactionProfile));
         
         if (allBindings == null || allBindings.isEmpty()) {
             mainContainer.child(
@@ -212,7 +227,7 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
         buttonRow.child(
                 Components.button(
                         Text.literal("Back"),
-                        button -> this.close()
+                        button -> close()
                 )
         );
 
@@ -375,10 +390,20 @@ public class ChangeBindingScreen extends BaseOwoScreen<FlowLayout> {
             this.client.setScreen(new SelectActionScreen(
                     this,
                     interactionProfile,
+                    setId,
                     inputPath,
                     inputDesc,
                     allBindings
             ));
         }
+    }
+
+    @Override
+    public void close() {
+        if (this.client != null && this.parentScreen != null) {
+            this.client.setScreen(this.parentScreen);
+            return;
+        }
+        super.close();
     }
 }
