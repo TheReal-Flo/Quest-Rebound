@@ -61,6 +61,5 @@
   "text.request.import_in_progress": "Importing %s...",
   "message.request.binding_set_switched": "Interaction Set: %s",
   "message.request.upload_success": "Uploaded preset: %s",
-  "message.request.import_success": "Imported preset as set: %s",
-  "message.request.link_success": "Linked session for %s"
+  "message.request.import_success": "Imported preset as set: %s"
 }
