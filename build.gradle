@@ -47,7 +47,7 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     // Custom dependencies (loaded from /lib)
-    modImplementation fileTree(dir: 'lib', include: ['*.jar'])
+    modImplementation fileTree(dir: project.findProperty('lib_dir') ?: 'lib', include: ['*.jar'])
 }
 
 processResources {

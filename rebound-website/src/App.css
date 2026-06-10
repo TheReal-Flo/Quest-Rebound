@@ -63,6 +63,60 @@
   transform: scale(1.05);
 }
 
+.site-footer {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.site-footer a {
+  color: var(--text);
+}
+
+.site-footer a:hover {
+  color: var(--text-h);
+}
+
+.text-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  text-align: left;
+}
+
+.text-page h1 {
+  color: var(--text-h);
+  font-size: 2rem;
+  margin: 0 0 0.25rem;
+}
+
+.text-page h2 {
+  color: var(--text-h);
+  font-size: 1.3rem;
+  margin: 2rem 0 0.5rem;
+}
+
+.text-page h3 {
+  color: var(--text-h);
+  font-size: 1.05rem;
+  margin: 1.25rem 0 0.25rem;
+}
+
+.text-page p {
+  margin: 0.5rem 0;
+}
+
+.text-page .updated {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-bottom: 1.5rem;
+}
+
+.text-page a {
+  color: var(--text-h);
+}
+
 .presets-page {
   max-width: 720px;
   margin: 0 auto;

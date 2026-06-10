@@ -96,7 +96,7 @@ public class BindingSetManagerScreen extends BaseOwoScreen<FlowLayout> {
 
         rootComponent.child(panel);
 
-        SessionLinkManager.ensureLinkedAsync().thenAccept(linked -> {
+        SessionLinkManager.ensureLinkedWithConsent(this, linked -> {
             if (linked && this.client != null) {
                 this.client.execute(() -> uploadButton.active = true);
             }

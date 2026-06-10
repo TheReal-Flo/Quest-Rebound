@@ -31,6 +31,7 @@ public class BindingSetRegistry {
 
     private final Path configPath = Paths.get("config").resolve(CONFIG_FILE);
     private final Object lock = new Object();
+    private RegistryData cachedData;
 
     private BindingSetRegistry() {}
 
@@ -74,7 +75,6 @@ public class BindingSetRegistry {
             String normalizedProfile = normalize(interactionProfilePath);
             RegistryData data = loadRegistry();
             ProfileSetData profileData = ensureProfileInitialized(data, normalizedProfile);
-            saveRegistry(data);
             return profileData.active;
         }
     }
@@ -84,7 +84,6 @@ public class BindingSetRegistry {
             String normalizedProfile = normalize(interactionProfilePath);
             RegistryData data = loadRegistry();
             ProfileSetData profileData = ensureProfileInitialized(data, normalizedProfile);
-            saveRegistry(data);
             SetData setData = profileData.sets.get(setId);
             return setData != null ? setData.name : prettifySetName(setId);
         }
@@ -95,7 +94,6 @@ public class BindingSetRegistry {
             String normalizedProfile = normalize(interactionProfilePath);
             RegistryData data = loadRegistry();
             ProfileSetData profileData = ensureProfileInitialized(data, normalizedProfile);
-            saveRegistry(data);
 
             List<BindingSetEntry> entries = new ArrayList<>();
             for (String setId : profileData.order) {
@@ -119,7 +117,6 @@ public class BindingSetRegistry {
             String normalizedProfile = normalize(interactionProfilePath);
             RegistryData data = loadRegistry();
             ProfileSetData profileData = ensureProfileInitialized(data, normalizedProfile);
-            saveRegistry(data);
             return nextGeneratedSetName(profileData);
         }
     }
@@ -428,6 +425,7 @@ public class BindingSetRegistry {
         }
 
         if (changed) {
+            saveRegistry(data);
             LOGGER.info("Initialized binding sets for {}", normalizedProfile);
         }
 
@@ -546,21 +544,28 @@ public class BindingSetRegistry {
     }
 
     private RegistryData loadRegistry() {
+        if (this.cachedData != null) {
+            return this.cachedData;
+        }
+
         if (!Files.exists(this.configPath)) {
-            return new RegistryData();
+            this.cachedData = new RegistryData();
+            return this.cachedData;
         }
 
         try {
             String json = Files.readString(this.configPath);
             RegistryData data = GSON.fromJson(json, RegistryData.class);
-            return data != null ? data : new RegistryData();
+            this.cachedData = data != null ? data : new RegistryData();
         } catch (IOException e) {
             LOGGER.error("Failed to load binding-set registry", e);
-            return new RegistryData();
+            this.cachedData = new RegistryData();
         }
+        return this.cachedData;
     }
 
     private void saveRegistry(RegistryData data) {
+        this.cachedData = data;
         try {
             Files.createDirectories(this.configPath.getParent());
             Files.writeString(this.configPath, GSON.toJson(data));

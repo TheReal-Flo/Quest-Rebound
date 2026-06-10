@@ -51,7 +51,10 @@ public final class PresetPackageManager {
         return new RemotePresetClient.UploadPresetRequest(
             effectiveTitle,
             effectiveDescription,
-            net.minecraft.SharedConstants.getGameVersion().getName(),
+            net.fabricmc.loader.api.FabricLoader.getInstance()
+                .getModContainer("minecraft")
+                .map(container -> container.getMetadata().getVersion().getFriendlyString())
+                .orElse("unknown"),
             "fabric",
             net.fabricmc.loader.api.FabricLoader.getInstance()
                 .getModContainer(RequestModClient.MOD_ID)

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Builds the immutable raw OpenXR action superset and routes raw state into logical Vivecraft actions.
@@ -46,7 +47,11 @@ public final class RuntimeBindingRouter {
     private final Map<String, RawActionDefinition> rawDefinitionsByActionName = new LinkedHashMap<>();
     private final Map<String, Collection<Pair<String, String>>> defaultBindingsByProfile = new HashMap<>();
     private final Map<String, Collection<Pair<String, String>>> rawBindingsByProfile = new HashMap<>();
-    private final Map<String, Map<String, List<RouteSource>>> routeCacheByProfile = new HashMap<>();
+    // Concurrent so reloadMappings() can invalidate without taking this.lock; registry methods
+    // call reloadMappings() while holding their own lock, and taking this.lock there would
+    // invert the lock order used by getRoutesForProfile.
+    private final Map<String, Map<String, List<RouteSource>>> routeCacheByProfile = new ConcurrentHashMap<>();
+    private final Map<String, String> activeSetIdByProfile = new ConcurrentHashMap<>();
     private boolean rawDefinitionsBuilt;
 
     private RuntimeBindingRouter() {}
@@ -110,9 +115,8 @@ public final class RuntimeBindingRouter {
     }
 
     public void reloadMappings() {
-        synchronized (this.lock) {
-            this.routeCacheByProfile.clear();
-        }
+        this.routeCacheByProfile.clear();
+        this.activeSetIdByProfile.clear();
     }
 
     public Collection<Pair<String, String>> getRawBindingsForProfile(String interactionProfile) {
@@ -165,43 +169,58 @@ public final class RuntimeBindingRouter {
         String interactionProfile,
         Map<String, VRInputAction> inputActions)
     {
+        String normalizedProfile = DefaultBindingManager.getInstance().getUnifiedProfile(
+            interactionProfile == null || interactionProfile.isBlank() ? OCULUS_TOUCH_PROFILE : interactionProfile
+        );
+        // The registry hits the filesystem on every query, so the active set id must be cached
+        // here; reloadMappings() invalidates it whenever a set is created, switched, or edited.
+        String activeSetId = this.activeSetIdByProfile.computeIfAbsent(normalizedProfile,
+            profile -> BindingSetRegistry.getInstance().getActiveSetId(profile));
+        String cacheKey = normalizedProfile + "|" + activeSetId;
+
+        Map<String, List<RouteSource>> cachedRoutes = this.routeCacheByProfile.get(cacheKey);
+        if (cachedRoutes != null) {
+            return cachedRoutes;
+        }
+
+        return this.routeCacheByProfile.computeIfAbsent(cacheKey,
+            ignored -> buildRoutes(normalizedProfile, activeSetId, inputActions));
+    }
+
+    private Map<String, List<RouteSource>> buildRoutes(
+        String normalizedProfile,
+        String activeSetId,
+        Map<String, VRInputAction> inputActions)
+    {
         synchronized (this.lock) {
-            String normalizedProfile = DefaultBindingManager.getInstance().getUnifiedProfile(
-                interactionProfile == null || interactionProfile.isBlank() ? OCULUS_TOUCH_PROFILE : interactionProfile
-            );
-            String activeSetId = BindingSetRegistry.getInstance().getActiveSetId(normalizedProfile);
-            String cacheKey = normalizedProfile + "|" + activeSetId;
+            Collection<Pair<String, String>> fallbackBindings =
+                this.defaultBindingsByProfile.getOrDefault(normalizedProfile, XRBindings.getBinding(normalizedProfile));
+            Collection<Pair<String, String>> configuredBindings = DefaultBindingManager.getInstance()
+                .loadBindingsForSet(normalizedProfile, activeSetId, fallbackBindings);
 
-            return this.routeCacheByProfile.computeIfAbsent(cacheKey, ignored -> {
-                Collection<Pair<String, String>> fallbackBindings =
-                    this.defaultBindingsByProfile.getOrDefault(normalizedProfile, XRBindings.getBinding(normalizedProfile));
-                Collection<Pair<String, String>> configuredBindings = DefaultBindingManager.getInstance()
-                    .loadBindingsForSet(normalizedProfile, activeSetId, fallbackBindings);
-
-                Map<String, List<RouteSource>> routes = new HashMap<>();
-                if (configuredBindings == null) {
-                    return routes;
-                }
-
-                for (Pair<String, String> binding : configuredBindings) {
-                    VRInputAction logicalAction = inputActions.get(binding.getLeft());
-                    if (logicalAction == null || isRawAction(logicalAction)) {
-                        continue;
-                    }
-
-                    RawActionDefinition rawDefinition = this.rawDefinitionsByKey.get(
-                        new RawBindingKey(binding.getRight(), logicalAction.type)
-                    );
-                    if (rawDefinition == null) {
-                        continue;
-                    }
-
-                    routes.computeIfAbsent(logicalAction.name, key -> new ArrayList<>())
-                        .add(new RouteSource(rawDefinition.actionName(), handForPath(binding.getRight())));
-                }
-
+            Map<String, List<RouteSource>> routes = new HashMap<>();
+            if (configuredBindings == null) {
                 return routes;
-            });
+            }
+
+            for (Pair<String, String> binding : configuredBindings) {
+                VRInputAction logicalAction = inputActions.get(binding.getLeft());
+                if (logicalAction == null || isRawAction(logicalAction)) {
+                    continue;
+                }
+
+                RawActionDefinition rawDefinition = this.rawDefinitionsByKey.get(
+                    new RawBindingKey(binding.getRight(), logicalAction.type)
+                );
+                if (rawDefinition == null) {
+                    continue;
+                }
+
+                routes.computeIfAbsent(logicalAction.name, key -> new ArrayList<>())
+                    .add(new RouteSource(rawDefinition.actionName(), handForPath(binding.getRight())));
+            }
+
+            return routes;
         }
     }
 

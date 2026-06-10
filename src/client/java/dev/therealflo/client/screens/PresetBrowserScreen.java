@@ -143,7 +143,7 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
             loadPresets();
         }
 
-        SessionLinkManager.ensureLinkedAsync().thenAccept(linked -> {
+        SessionLinkManager.ensureLinkedWithConsent(this, linked -> {
             if (linked && this.client != null) {
                 this.client.execute(() -> uploadButton.active = true);
             }

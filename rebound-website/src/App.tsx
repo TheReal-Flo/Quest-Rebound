@@ -1,6 +1,7 @@
 import './App.css'
 import { Link, usePath } from './router'
 import { PresetsPage } from './PresetsPage'
+import { PrivacyPage } from './PrivacyPage'
 
 function HomePage() {
   return (
@@ -50,7 +51,16 @@ function App() {
           </a>
         </div>
       </nav>
-      {path === '/presets' ? <PresetsPage /> : <HomePage />}
+      {path === '/presets' ? (
+        <PresetsPage />
+      ) : path === '/privacy' ? (
+        <PrivacyPage />
+      ) : (
+        <HomePage />
+      )}
+      <footer className="site-footer">
+        <Link to="/privacy">Privacy Policy</Link>
+      </footer>
     </>
   )
 }

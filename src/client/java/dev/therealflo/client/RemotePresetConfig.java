@@ -23,6 +23,32 @@ public class RemotePresetConfig {
         public String authTokenExpiresAt = "";
         public String linkedUuid = "";
         public String linkedName = "";
+        /** "" = not asked yet, "granted" or "denied" once the user decided. */
+        public String loginConsent = "";
+    }
+
+    public enum LoginConsent {
+        UNDECIDED,
+        GRANTED,
+        DENIED;
+
+        static LoginConsent fromConfigValue(String value) {
+            if ("granted".equals(value)) {
+                return GRANTED;
+            }
+            if ("denied".equals(value)) {
+                return DENIED;
+            }
+            return UNDECIDED;
+        }
+
+        String toConfigValue() {
+            return switch (this) {
+                case GRANTED -> "granted";
+                case DENIED -> "denied";
+                case UNDECIDED -> "";
+            };
+        }
     }
 
     private final Object lock = new Object();
@@ -61,6 +87,20 @@ public class RemotePresetConfig {
 
     public void clearAuth() {
         saveAuth("", "", "", "");
+    }
+
+    public LoginConsent getLoginConsent() {
+        synchronized (this.lock) {
+            return LoginConsent.fromConfigValue(load().loginConsent);
+        }
+    }
+
+    public void setLoginConsent(LoginConsent consent) {
+        synchronized (this.lock) {
+            ConfigData data = load();
+            data.loginConsent = consent.toConfigValue();
+            save(data);
+        }
     }
 
     public boolean hasUsableToken() {
