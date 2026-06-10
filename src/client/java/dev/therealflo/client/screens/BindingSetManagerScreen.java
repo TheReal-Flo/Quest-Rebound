@@ -2,6 +2,7 @@ package dev.therealflo.client.screens;
 
 import dev.therealflo.client.BindingSetRegistry;
 import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.SessionLinkManager;
 import dev.therealflo.client.screens.BindingSetNameScreen.Mode;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.Components;
@@ -74,7 +75,7 @@ public class BindingSetManagerScreen extends BaseOwoScreen<FlowLayout> {
                     }
                 }
         ));
-        footer.child(RequestUi.footerButton(
+        var uploadButton = RequestUi.footerButton(
                 Text.translatable("button.request.upload_preset"),
                 button -> {
                     if (this.client != null) {
@@ -84,7 +85,9 @@ public class BindingSetManagerScreen extends BaseOwoScreen<FlowLayout> {
                         ));
                     }
                 }
-        ));
+        );
+        uploadButton.active = SessionLinkManager.isLinked();
+        footer.child(uploadButton);
         footer.child(RequestUi.footerButton(
                 Text.translatable("button.request.back"),
                 button -> close()
@@ -92,6 +95,12 @@ public class BindingSetManagerScreen extends BaseOwoScreen<FlowLayout> {
         panel.child(footer);
 
         rootComponent.child(panel);
+
+        SessionLinkManager.ensureLinkedAsync().thenAccept(linked -> {
+            if (linked && this.client != null) {
+                this.client.execute(() -> uploadButton.active = true);
+            }
+        });
     }
 
     private FlowLayout buildSetCard(BindingSetRegistry registry, BindingSetRegistry.BindingSetEntry entry,

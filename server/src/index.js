@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -28,7 +30,15 @@ if (isDevelopmentSecret) {
 app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "img-src": ["'self'", "data:", "https://cdn.jsdelivr.net"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 app.use(express.json({ limit: "2mb" }));
 
 app.use("/api/auth", rateLimit({
@@ -353,6 +363,21 @@ app.post("/api/presets/:id/report", requireBearerToken, (req, res) => {
 
   res.status(201).json({ ok: true });
 });
+
+const websiteIndexPath = path.join(config.websiteDistPath, "index.html");
+
+if (fs.existsSync(websiteIndexPath)) {
+  app.use(express.static(config.websiteDistPath));
+
+  app.get(/^\/(?!api\/|health$).*/, (_req, res) => {
+    res.sendFile(websiteIndexPath);
+  });
+} else {
+  console.warn(
+    `[quest-rebound-server] Website bundle not found at ${config.websiteDistPath}. ` +
+    "Run \"npm run build\" in rebound-website to serve the homepage."
+  );
+}
 
 app.use((error, _req, res, _next) => {
   if (error instanceof ApiError) {

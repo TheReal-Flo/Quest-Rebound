@@ -122,3 +122,5 @@ runs/
 !gradle-wrapper.jar
 
 server/data/
+
+**/node_modules/

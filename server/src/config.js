@@ -29,7 +29,8 @@ export const config = {
   authTokenTtlHours: intFromEnv("AUTH_TOKEN_TTL_HOURS", 168),
   maxPresetFiles: intFromEnv("MAX_PRESET_FILES", 32),
   maxFileBytes: intFromEnv("MAX_FILE_BYTES", 256 * 1024),
-  maxTotalBytes: intFromEnv("MAX_TOTAL_BYTES", 1024 * 1024)
+  maxTotalBytes: intFromEnv("MAX_TOTAL_BYTES", 1024 * 1024),
+  websiteDistPath: path.resolve(projectRoot, process.env.WEBSITE_DIST_PATH || "./dist")
 };
 
 export const isDevelopmentSecret = config.jwtSecret === "development-secret-change-me";

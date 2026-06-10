@@ -5,6 +5,7 @@ import dev.therealflo.client.PresetPackageManager;
 import dev.therealflo.client.RemotePresetClient;
 import dev.therealflo.client.RemotePresetConfig;
 import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.SessionLinkManager;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.Components;
 import io.wispforest.owo.ui.component.LabelComponent;
@@ -81,10 +82,12 @@ public class PresetUploadScreen extends BaseOwoScreen<FlowLayout> {
         panel.child(this.statusLabel.margins(Insets.top(8)));
 
         FlowLayout footer = RequestUi.footer();
-        footer.child(RequestUi.footerButton(
+        var uploadButton = RequestUi.footerButton(
                 Text.translatable("button.request.upload_preset"),
                 button -> upload()
-        ));
+        );
+        uploadButton.active = SessionLinkManager.isLinked();
+        footer.child(uploadButton);
         footer.child(RequestUi.footerButton(
                 Text.translatable("button.request.browse_presets"),
                 button -> {
@@ -100,6 +103,12 @@ public class PresetUploadScreen extends BaseOwoScreen<FlowLayout> {
         panel.child(footer);
 
         rootComponent.child(panel);
+
+        SessionLinkManager.ensureLinkedAsync().thenAccept(linked -> {
+            if (linked && this.client != null) {
+                this.client.execute(() -> uploadButton.active = true);
+            }
+        });
     }
 
     private void setStatus(String status) {

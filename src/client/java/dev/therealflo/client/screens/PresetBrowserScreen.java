@@ -5,6 +5,7 @@ import dev.therealflo.client.PresetPackageManager;
 import dev.therealflo.client.RemotePresetClient;
 import dev.therealflo.client.RemotePresetConfig;
 import dev.therealflo.client.RequestModClient;
+import dev.therealflo.client.SessionLinkManager;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.ButtonComponent;
 import io.wispforest.owo.ui.component.Components;
@@ -32,7 +33,6 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
     private String searchQuery = "";
     private int offset;
     private boolean loadingPresets;
-    private boolean linkingSession;
     private boolean importingPreset;
 
     private TextBoxComponent searchField;
@@ -120,7 +120,7 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
         // Main action row
         FlowLayout footer = RequestUi.footer();
         footer.margins(Insets.top(2));
-        footer.child(RequestUi.footerButton(
+        ButtonComponent uploadButton = RequestUi.footerButton(
                 Text.translatable("button.request.upload_preset"),
                 button -> {
                     if (this.client != null) {
@@ -128,7 +128,9 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
                         this.client.setScreen(new PresetUploadScreen(this, this.interactionProfile, activeSetId));
                     }
                 }
-        ));
+        );
+        uploadButton.active = SessionLinkManager.isLinked();
+        footer.child(uploadButton);
         footer.child(RequestUi.footerButton(
                 Text.translatable("button.request.back"),
                 button -> close()
@@ -140,7 +142,12 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
         if (this.presets.isEmpty() && !this.loadingPresets) {
             loadPresets();
         }
-        autoLinkSession();
+
+        SessionLinkManager.ensureLinkedAsync().thenAccept(linked -> {
+            if (linked && this.client != null) {
+                this.client.execute(() -> uploadButton.active = true);
+            }
+        });
     }
 
     private Text pageText() {
@@ -184,28 +191,6 @@ public class PresetBrowserScreen extends BaseOwoScreen<FlowLayout> {
 
     private void setStatus(String status) {
         this.statusLabel.text(Text.literal(status == null ? "" : status));
-    }
-
-    /**
-     * Links the current Minecraft session in the background if no usable
-     * token exists yet. Succeeds silently; failures are only logged and
-     * surfaced again when an authenticated action (upload) actually needs
-     * the link.
-     */
-    private void autoLinkSession() {
-        if (this.linkingSession || RemotePresetConfig.getInstance().hasUsableToken()) {
-            return;
-        }
-
-        this.linkingSession = true;
-        CompletableFuture.supplyAsync(this.presetClient::ensureLinkedSession)
-                .whenComplete((identity, throwable) -> {
-                    this.linkingSession = false;
-                    if (throwable != null) {
-                        RequestModClient.logError(
-                                "Automatic session link failed: " + RequestModClient.formatError(throwable), throwable);
-                    }
-                });
     }
 
     private void loadPresets() {
