@@ -18,7 +18,7 @@ public class RemotePresetConfig {
     private static volatile RemotePresetConfig instance;
 
     public static class ConfigData {
-        public String baseUrl = "http://127.0.0.1:3000";
+        public String baseUrl = "https://rebound.justfeli.dev";
         public String authToken = "";
         public String authTokenExpiresAt = "";
         public String linkedUuid = "";

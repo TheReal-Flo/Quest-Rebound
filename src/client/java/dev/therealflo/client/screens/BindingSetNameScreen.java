@@ -1,13 +1,19 @@
 package dev.therealflo.client.screens;
 
 import dev.therealflo.client.BindingSetRegistry;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
+import io.wispforest.owo.ui.base.BaseOwoScreen;
+import io.wispforest.owo.ui.component.ButtonComponent;
+import io.wispforest.owo.ui.component.Components;
+import io.wispforest.owo.ui.component.TextBoxComponent;
+import io.wispforest.owo.ui.container.Containers;
+import io.wispforest.owo.ui.container.FlowLayout;
+import io.wispforest.owo.ui.core.Insets;
+import io.wispforest.owo.ui.core.OwoUIAdapter;
+import io.wispforest.owo.ui.core.Sizing;
 import net.minecraft.text.Text;
+import org.jetbrains.annotations.NotNull;
 
-public class BindingSetNameScreen extends Screen {
+public class BindingSetNameScreen extends BaseOwoScreen<FlowLayout> {
     public enum Mode {
         CREATE,
         DUPLICATE,
@@ -19,21 +25,16 @@ public class BindingSetNameScreen extends Screen {
     private final Mode mode;
     private final String sourceSetId;
     private final String initialValue;
-    private TextFieldWidget nameField;
-    private ButtonWidget saveButton;
+    private TextBoxComponent nameField;
+    private ButtonComponent saveButton;
 
     public BindingSetNameScreen(
-        BindingSetManagerScreen parentScreen,
-        String interactionProfile,
-        Mode mode,
-        String sourceSetId,
-        String initialValue
+            BindingSetManagerScreen parentScreen,
+            String interactionProfile,
+            Mode mode,
+            String sourceSetId,
+            String initialValue
     ) {
-        super(Text.translatable(switch (mode) {
-            case CREATE -> "screen.request.create_set";
-            case DUPLICATE -> "screen.request.duplicate_set";
-            case RENAME -> "screen.request.rename_set";
-        }));
         this.parentScreen = parentScreen;
         this.interactionProfile = interactionProfile;
         this.mode = mode;
@@ -42,59 +43,70 @@ public class BindingSetNameScreen extends Screen {
     }
 
     @Override
-    protected void init() {
-        int fieldWidth = 220;
-        int fieldHeight = 20;
-        int centerX = this.width / 2;
-        int top = this.height / 2 - 20;
+    protected @NotNull OwoUIAdapter<FlowLayout> createAdapter() {
+        return OwoUIAdapter.create(this, Containers::verticalFlow);
+    }
 
-        this.nameField = new TextFieldWidget(this.textRenderer, centerX - fieldWidth / 2, top, fieldWidth, fieldHeight, Text.empty());
+    @Override
+    protected void build(FlowLayout rootComponent) {
+        RequestUi.root(rootComponent);
+
+        FlowLayout panel = RequestUi.dialogPanel();
+        panel.child(RequestUi.header(
+                Text.translatable(switch (mode) {
+                    case CREATE -> "screen.request.create_set";
+                    case DUPLICATE -> "screen.request.duplicate_set";
+                    case RENAME -> "screen.request.rename_set";
+                }),
+                Text.translatable(mode == Mode.RENAME ? "text.request.rename_set_hint" : "text.request.create_set_hint")
+        ));
+
+        this.nameField = Components.textBox(Sizing.fill(100), initialValue);
         this.nameField.setMaxLength(64);
-        this.saveButton = this.addDrawableChild(ButtonWidget.builder(
-                Text.translatable("button.request.save"),
-                button -> this.request$submit()
-        ).dimensions(centerX - 110, top + 32, 105, 20).build());
-        this.nameField.setChangedListener(value -> {
+        this.nameField.onChanged().subscribe(value -> {
             if (this.saveButton != null) {
                 this.saveButton.active = !value.trim().isEmpty();
             }
         });
-        this.nameField.setText(this.initialValue);
-        this.addDrawableChild(this.nameField);
-        this.setInitialFocus(this.nameField);
-        this.saveButton.active = !this.initialValue.trim().isEmpty();
+        panel.child(this.nameField.margins(Insets.vertical(4)));
 
-        this.addDrawableChild(ButtonWidget.builder(
+        FlowLayout footer = RequestUi.footer();
+        this.saveButton = RequestUi.footerButton(
+                Text.translatable("button.request.save"),
+                button -> submit()
+        );
+        this.saveButton.active = !initialValue.trim().isEmpty();
+        footer.child(this.saveButton);
+        footer.child(RequestUi.footerButton(
                 Text.translatable("button.request.cancel"),
                 button -> this.close()
-        ).dimensions(centerX + 5, top + 32, 105, 20).build());
+        ));
+        panel.child(footer);
+
+        rootComponent.child(panel);
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 52, 0xFFFFFF);
-        context.drawCenteredTextWithShadow(
-            this.textRenderer,
-            Text.translatable(this.mode == Mode.RENAME ? "text.request.rename_set_hint" : "text.request.create_set_hint"),
-            this.width / 2,
-            this.height / 2 - 36,
-            0xA0A0A0
-        );
-        super.render(context, mouseX, mouseY, delta);
-        this.nameField.render(context, mouseX, mouseY, delta);
+    protected void init() {
+        super.init();
+        // Focus the name field once the adapter is fully mounted; the focus
+        // handler does not exist yet while build() is running.
+        if (this.uiAdapter != null && this.nameField != null) {
+            this.uiAdapter.rootComponent.focusHandler().focus(
+                    this.nameField, io.wispforest.owo.ui.core.Component.FocusSource.KEYBOARD_CYCLE);
+        }
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == 257 || keyCode == 335) {
-            request$submit();
+            submit();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    private void request$submit() {
+    private void submit() {
         String value = this.nameField.getText().trim();
         if (value.isEmpty()) {
             return;
@@ -107,10 +119,7 @@ public class BindingSetNameScreen extends Screen {
             case RENAME -> registry.renameSet(this.interactionProfile, this.sourceSetId, value);
         }
 
-        this.parentScreen.refresh();
-        if (this.client != null) {
-            this.client.setScreen(this.parentScreen);
-        }
+        this.close();
     }
 
     @Override

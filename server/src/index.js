@@ -25,6 +25,8 @@ if (isDevelopmentSecret) {
   console.warn("[quest-rebound-server] Using the development JWT secret. Set JWT_SECRET before deploying.");
 }
 
+app.set("trust proxy", 1);
+
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(express.json({ limit: "2mb" }));
@@ -165,6 +167,12 @@ app.post("/api/auth/verify", async (req, res, next) => {
       }
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      console.warn(
+        `[quest-rebound-server] Auth verify failed (${error.status}): ${error.message}`,
+        error.details ?? ""
+      );
+    }
     next(error);
   }
 });

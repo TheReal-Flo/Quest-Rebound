@@ -10,8 +10,26 @@ export class ApiError extends Error {
   }
 }
 
+/** Mojang joinServer/hasJoined only accept signed SHA-1 hex ids (1-40 hex digits, optional leading minus). */
+export const MOJANG_SERVER_ID_PATTERN = /^-?[0-9a-f]{1,40}$/;
+
+export function toSignedHexSha1(source) {
+  const digest = crypto.createHash("sha1").update(source).digest();
+  let value = 0n;
+
+  for (const byte of digest) {
+    value = (value << 8n) | BigInt(byte);
+  }
+
+  if (value >= (1n << 159n)) {
+    value -= 1n << 160n;
+  }
+
+  return value.toString(16).toLowerCase();
+}
+
 export function randomChallenge() {
-  return crypto.randomBytes(32).toString("hex");
+  return toSignedHexSha1(crypto.randomBytes(16));
 }
 
 export function sha256(value) {

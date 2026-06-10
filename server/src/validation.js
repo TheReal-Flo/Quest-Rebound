@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiError, sha256 } from "./auth.js";
+import { ApiError, MOJANG_SERVER_ID_PATTERN, sha256 } from "./auth.js";
 import { config } from "./config.js";
 
 const bindingEntrySchema = z.object({
@@ -49,7 +49,7 @@ const reportInputSchema = z.object({
 });
 
 const challengeVerifySchema = z.object({
-  challenge: z.string().regex(/^[0-9a-f]{64}$/),
+  challenge: z.string().regex(MOJANG_SERVER_ID_PATTERN),
   username: z.string().trim().min(1).max(16)
 });
 

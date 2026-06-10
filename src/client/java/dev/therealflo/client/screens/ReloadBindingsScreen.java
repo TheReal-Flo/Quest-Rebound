@@ -2,10 +2,9 @@ package dev.therealflo.client.screens;
 
 import dev.therealflo.client.api.MCOpenXRReload;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
-import io.wispforest.owo.ui.component.Components;
 import io.wispforest.owo.ui.container.Containers;
 import io.wispforest.owo.ui.container.FlowLayout;
-import io.wispforest.owo.ui.core.*;
+import io.wispforest.owo.ui.core.OwoUIAdapter;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.NotNull;
 import org.vivecraft.client_vr.ClientDataHolderVR;
@@ -19,28 +18,29 @@ public class ReloadBindingsScreen extends BaseOwoScreen<FlowLayout> {
 
     @Override
     protected void build(FlowLayout rootComponent) {
-        rootComponent
-                .surface(Surface.VANILLA_TRANSLUCENT)
-                .horizontalAlignment(HorizontalAlignment.CENTER)
-                .verticalAlignment(VerticalAlignment.CENTER);
+        RequestUi.root(rootComponent);
 
-        rootComponent.child(
-                Components.label(Text.literal("Reload Bindings"))
-                        .color(Color.ofRgb(0xffffff))
-                        .shadow(true)
-                        .horizontalTextAlignment(HorizontalAlignment.CENTER)
-                        .verticalTextAlignment(VerticalAlignment.CENTER)
-        );
+        FlowLayout panel = RequestUi.dialogPanel();
+        panel.child(RequestUi.header(
+                Text.translatable("screen.request.reload_bindings"),
+                Text.translatable("text.request.reload_hint")
+        ));
 
-        rootComponent.child(
-                Components.button(
-                        Text.literal("Reload"),
-                        button -> {
-                            if (ClientDataHolderVR.getInstance().vr instanceof MCOpenXRReload reloadable) {
-                                reloadable.reloadXRBindings();
-                            }
-                        }
-                )
-        );
+        FlowLayout footer = RequestUi.footer();
+        footer.child(RequestUi.footerButton(
+                Text.translatable("button.request.reload"),
+                button -> {
+                    if (ClientDataHolderVR.getInstance().vr instanceof MCOpenXRReload reloadable) {
+                        reloadable.reloadXRBindings();
+                    }
+                }
+        ));
+        footer.child(RequestUi.footerButton(
+                Text.translatable("button.request.back"),
+                button -> close()
+        ));
+        panel.child(footer);
+
+        rootComponent.child(panel);
     }
 }

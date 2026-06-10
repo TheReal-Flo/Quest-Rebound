@@ -20,8 +20,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 public class RemotePresetClient {
+    private static final Pattern MOJANG_SERVER_ID_PATTERN = Pattern.compile("^-?[0-9a-f]{1,40}$");
     private static final Gson GSON = new GsonBuilder().create();
     private static final Type PRESET_LIST_TYPE = new TypeToken<PresetListResponse>() {}.getType();
     private static final Type DOWNLOAD_TYPE = new TypeToken<DownloadedPreset>() {}.getType();
@@ -42,6 +45,9 @@ public class RemotePresetClient {
     }
 
     public AuthIdentity linkCurrentSession() {
+        RemotePresetConfig.ConfigData configData = this.config.get();
+        RequestModClient.logInfo("Linking session via " + stripTrailingSlash(configData.baseUrl));
+
         MinecraftClient client = MinecraftClient.getInstance();
         Session session = client.getSession();
         if (session == null || session.getAccessToken() == null || session.getAccessToken().isBlank()) {
@@ -51,6 +57,7 @@ public class RemotePresetClient {
             throw new IllegalStateException("Minecraft session UUID is unavailable");
         }
 
+        RequestModClient.logInfo("Requesting auth challenge for " + session.getUsername());
         AuthChallengeResponse challengeResponse = request(
             "POST",
             "/api/auth/challenge",
@@ -58,17 +65,32 @@ public class RemotePresetClient {
             null,
             CHALLENGE_RESPONSE_TYPE
         );
+        if (challengeResponse.challenge == null || challengeResponse.challenge.isBlank()) {
+            throw new IllegalStateException("Preset server returned an invalid auth challenge");
+        }
+        String serverId = challengeResponse.challenge.trim().toLowerCase(Locale.ROOT);
+        if (!isMojangServerId(serverId)) {
+            throw new IllegalStateException(
+                "Preset server returned an invalid auth challenge format. Update the preset server and try again."
+            );
+        }
 
+        RequestModClient.logInfo("Joining Mojang session server for " + session.getUsername());
         try {
-            client.getSessionService().joinServer(session.getUuidOrNull(), session.getAccessToken(), challengeResponse.challenge);
+            client.getSessionService().joinServer(session.getUuidOrNull(), session.getAccessToken(), serverId);
         } catch (AuthenticationException e) {
-            throw new IllegalStateException("Failed to link the current Minecraft session", e);
+            RequestModClient.logError("Minecraft joinServer failed for " + session.getUsername(), e);
+            String detail = e.getMessage() != null && !e.getMessage().isBlank()
+                ? e.getMessage()
+                : e.getClass().getSimpleName();
+            throw new IllegalStateException("Failed to link the current Minecraft session: " + detail, e);
         }
 
         JsonObject verifyBody = new JsonObject();
-        verifyBody.addProperty("challenge", challengeResponse.challenge);
+        verifyBody.addProperty("challenge", serverId);
         verifyBody.addProperty("username", session.getUsername());
 
+        RequestModClient.logInfo("Verifying linked session for " + session.getUsername());
         AuthVerifyResponse response = request(
             "POST",
             "/api/auth/verify",
@@ -76,6 +98,12 @@ public class RemotePresetClient {
             verifyBody,
             AUTH_RESPONSE_TYPE
         );
+        if (response.token == null || response.token.isBlank()) {
+            throw new IllegalStateException("Preset server returned an invalid auth token");
+        }
+        if (response.user == null || response.user.minecraftUuid == null || response.user.currentName == null) {
+            throw new IllegalStateException("Preset server returned an invalid auth response");
+        }
 
         this.config.saveAuth(
             response.token,
@@ -83,6 +111,7 @@ public class RemotePresetClient {
             response.user.minecraftUuid,
             response.user.currentName
         );
+        RequestModClient.logInfo("Linked session for " + response.user.currentName + " (" + response.user.minecraftUuid + ")");
         return new AuthIdentity(response.user.minecraftUuid, response.user.currentName, response.token, response.expiresAt);
     }
 
@@ -136,6 +165,9 @@ public class RemotePresetClient {
 
             HttpResponse<String> response = this.httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                RequestModClient.logError(
+                    "Preset server " + method + " " + uri + " failed with HTTP " + response.statusCode() + ": " + response.body()
+                );
                 throw buildApiError(response);
             }
 
@@ -145,7 +177,8 @@ public class RemotePresetClient {
 
             return GSON.fromJson(response.body(), responseType);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to reach preset server", e);
+            RequestModClient.logError("Failed to reach preset server for " + method + " " + path, e);
+            throw new UncheckedIOException("Failed to reach preset server: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Preset server request interrupted", e);
@@ -168,9 +201,13 @@ public class RemotePresetClient {
         }
     }
 
+    private static boolean isMojangServerId(String value) {
+        return value != null && MOJANG_SERVER_ID_PATTERN.matcher(value).matches();
+    }
+
     private static String stripTrailingSlash(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) {
-            return "http://127.0.0.1:3000";
+            return "http://127.0.0.1:3267";
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }

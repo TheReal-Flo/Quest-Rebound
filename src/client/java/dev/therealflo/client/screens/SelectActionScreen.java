@@ -7,9 +7,9 @@ import dev.therealflo.client.RuntimeBindingRouter;
 import io.wispforest.owo.ui.base.BaseOwoScreen;
 import io.wispforest.owo.ui.component.CheckboxComponent;
 import io.wispforest.owo.ui.component.Components;
+import io.wispforest.owo.ui.container.CollapsibleContainer;
 import io.wispforest.owo.ui.container.Containers;
 import io.wispforest.owo.ui.container.FlowLayout;
-import io.wispforest.owo.ui.container.ScrollContainer;
 import io.wispforest.owo.ui.core.*;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -23,7 +23,7 @@ import org.vivecraft.client_vr.provider.control.VRInputAction;
 
 /**
  * Screen for selecting which actions should be bound to a specific input.
- * Shows all available actions organized by category with checkboxes.
+ * Shows all available actions organized by collapsible category with checkboxes.
  */
 public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
     private final Screen parentScreen;
@@ -36,16 +36,15 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
     private final Map<String, CheckboxComponent> actionCheckboxes = new LinkedHashMap<>();
 
     public SelectActionScreen(Screen parentScreen, String interactionProfile, String setId, String inputPath,
-                               InputPathDescriptions.InputDescription inputDesc,
-                               Collection<Pair<String, String>> allBindings) {
+                              InputPathDescriptions.InputDescription inputDesc,
+                              Collection<Pair<String, String>> allBindings) {
         this.parentScreen = parentScreen;
         this.interactionProfile = interactionProfile;
         this.setId = setId;
         this.inputPath = inputPath;
         this.inputDesc = inputDesc;
         this.allBindings = allBindings;
-        
-        // Build set of currently bound actions for this input
+
         this.currentlyBoundActions = new HashSet<>();
         for (Pair<String, String> binding : allBindings) {
             if (binding.getRight().equals(inputPath)) {
@@ -61,120 +60,71 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
 
     @Override
     protected void build(FlowLayout rootComponent) {
-        rootComponent
-                .surface(Surface.VANILLA_TRANSLUCENT)
-                .horizontalAlignment(HorizontalAlignment.CENTER)
-                .verticalAlignment(VerticalAlignment.CENTER);
+        RequestUi.root(rootComponent);
 
-        // Main container
-        FlowLayout mainContainer = Containers.verticalFlow(Sizing.fill(90), Sizing.fill(90));
-        mainContainer.padding(Insets.of(10));
-        
-        // Title
-        mainContainer.child(
-                Components.label(Text.literal("Select Actions for " + inputDesc.displayName))
-                        .color(Color.ofRgb(0xFFFFFF))
-                        .shadow(true)
-                        .margins(Insets.bottom(5))
-        );
-        
-        // Subtitle with input path
-        mainContainer.child(
-                Components.label(Text.literal(inputPath))
-                        .color(Color.ofRgb(0xAAAAAA))
-                        .margins(Insets.bottom(10))
-        );
-        
-        // Get all unique actions from the bindings
+        FlowLayout panel = RequestUi.panel(90, 90);
+        panel.child(RequestUi.header(
+                Text.translatable("screen.request.select_actions", inputDesc.displayName),
+                Text.literal(inputPath)
+        ));
+
         Map<String, List<String>> actionsByCategory = categorizeActions();
-        
-        // Create scrollable container for the action list
-        ScrollContainer<FlowLayout> scrollContainer = Containers.verticalScroll(
-                Sizing.fill(100),
-                Sizing.fill(70),
-                Containers.verticalFlow(Sizing.fill(100), Sizing.content())
-        );
-        
-        FlowLayout scrollContent = (FlowLayout) scrollContainer.child();
-        scrollContent.padding(Insets.of(5));
+
+        FlowLayout listContent = RequestUi.listContent();
         boolean hasAnyActions = false;
-        
-        // Create sections for each category
+
         for (Map.Entry<String, List<String>> entry : actionsByCategory.entrySet()) {
             String category = entry.getKey();
             List<String> actions = entry.getValue();
-            
             if (actions.isEmpty()) continue;
             hasAnyActions = true;
-            
-            // Category header
-            scrollContent.child(
-                    Components.label(Text.literal(category))
-                            .color(Color.ofRgb(0x00FFFF))
-                            .shadow(true)
-                            .margins(Insets.of(10, 0, 5, 0))
+
+            // Expand a category by default if it contains a bound action
+            boolean expanded = actions.stream().anyMatch(currentlyBoundActions::contains);
+
+            CollapsibleContainer section = Containers.collapsible(
+                    Sizing.fill(100), Sizing.content(),
+                    Text.literal(category + " (" + actions.size() + ")"),
+                    expanded
             );
-            
-            // Create checkbox for each action
+            section.surface(RequestUi.CARD);
+            section.padding(Insets.of(5));
+
             for (String action : actions) {
-                boolean isCurrentlyBound = currentlyBoundActions.contains(action);
-                
                 CheckboxComponent checkbox = Components.checkbox(Text.literal(getActionTranslation(action)))
-                        .checked(isCurrentlyBound);
-                
-                checkbox.margins(Insets.of(2, 0, 2, 10));
-                
-                // Store checkbox reference for later
+                        .checked(currentlyBoundActions.contains(action));
+                checkbox.margins(Insets.of(2, 2, 8, 0));
                 actionCheckboxes.put(action, checkbox);
-                
-                scrollContent.child(checkbox);
+                section.child(checkbox);
             }
+
+            listContent.child(section);
         }
 
         if (!hasAnyActions) {
-            scrollContent.child(
+            listContent.child(
                     Components.label(Text.translatable("text.request.no_bindable_actions"))
-                            .color(Color.ofRgb(0xFF8888))
+                            .color(RequestUi.ERROR)
                             .margins(Insets.top(8))
             );
         }
-        
-        mainContainer.child(scrollContainer);
-        
-        // Button container
-        FlowLayout buttonContainer = Containers.horizontalFlow(Sizing.content(), Sizing.content());
-        buttonContainer.gap(5);
-        buttonContainer.margins(Insets.top(10));
-        
-        // Apply button
-        buttonContainer.child(
-                Components.button(
-                        Text.literal("Apply"),
-                        button -> onApply()
-                )
-        );
-        
-        // Cancel button
-        buttonContainer.child(
-                Components.button(
-                        Text.literal("Cancel"),
-                        button -> this.close()
-                )
-        );
-        
-        mainContainer.child(buttonContainer);
-        
-        rootComponent.child(mainContainer);
+
+        panel.child(RequestUi.scrollArea(listContent));
+
+        FlowLayout footer = RequestUi.footer();
+        footer.child(RequestUi.footerButton(Text.translatable("button.request.apply"), button -> onApply()));
+        footer.child(RequestUi.footerButton(Text.translatable("button.request.cancel"), button -> this.close()));
+        panel.child(footer);
+
+        rootComponent.child(panel);
     }
-    
+
     /**
-     * Categorizes all actions from the bindings by their action set.
-     * Now includes ALL registered actions, not just those currently bound.
+     * Categorizes all bindable actions by their action set.
      */
     private Map<String, List<String>> categorizeActions() {
         Map<String, List<String>> actionsByCategory = new LinkedHashMap<>();
-        
-        // Initialize categories in desired order
+
         actionsByCategory.put("Global", new ArrayList<>());
         actionsByCategory.put("Ingame", new ArrayList<>());
         actionsByCategory.put("Mod", new ArrayList<>());
@@ -182,41 +132,27 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
         actionsByCategory.put("GUI", new ArrayList<>());
         actionsByCategory.put("Keyboard", new ArrayList<>());
         actionsByCategory.put("Other", new ArrayList<>());
-        
-        // Get ALL registered actions from Vivecraft
+
         List<String> allActions = RequestModClient.getAllRegisteredActions();
-        
+
         if (allActions.isEmpty()) {
-            // Fallback: If we can't get registered actions, use only those in bindings
-            System.out.println("[SelectActionScreen] Warning: Could not get registered actions, falling back to bindings only");
+            // Fallback: if we can't get registered actions, use only those in bindings
             Set<String> bindingActions = new HashSet<>();
             for (Pair<String, String> binding : allBindings) {
                 bindingActions.add(binding.getLeft());
             }
             allActions = new ArrayList<>(bindingActions);
         }
-        
-        System.out.println("[SelectActionScreen] Total actions available: " + allActions.size());
-        
-        // Sort actions alphabetically within their category
+
         allActions.sort(String::compareTo);
-        
-        // Categorize each action
+
         for (String action : allActions) {
             if (!isBindableAction(action)) {
                 continue;
             }
-            String category = getActionSetCategory(action);
-            actionsByCategory.get(category).add(action);
+            actionsByCategory.get(getActionSetCategory(action)).add(action);
         }
-        
-        // Debug: Print counts per category
-        for (Map.Entry<String, List<String>> entry : actionsByCategory.entrySet()) {
-            if (!entry.getValue().isEmpty()) {
-                System.out.println("[SelectActionScreen] Category '" + entry.getKey() + "' has " + entry.getValue().size() + " actions");
-            }
-        }
-        
+
         return actionsByCategory;
     }
 
@@ -233,7 +169,7 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
 
         return RuntimeBindingRouter.getInstance().canBind(interactionProfile, inputPath, action.type);
     }
-    
+
     /**
      * Gets the action set category for an action path.
      */
@@ -254,61 +190,49 @@ public class SelectActionScreen extends BaseOwoScreen<FlowLayout> {
             return "Other";
         }
     }
-    
+
     /**
      * Converts an action path to a human-readable name.
      */
     private String getActionTranslation(String actionPath) {
-        // Extract the last part of the action path
         String[] parts = actionPath.split("/");
         String actionName = parts[parts.length - 1];
-        
         return Text.translatable(actionName).getString();
     }
-    
+
     /**
      * Called when the user clicks Apply.
      * Updates the bindings based on checkbox selections.
      */
     private void onApply() {
-        // Build new set of selected actions
         Set<String> selectedActions = new HashSet<>();
         for (Map.Entry<String, CheckboxComponent> entry : actionCheckboxes.entrySet()) {
             if (entry.getValue().isChecked()) {
                 selectedActions.add(entry.getKey());
             }
         }
-        
-        // Create new bindings list
+
         List<Pair<String, String>> newBindings = new ArrayList<>();
-        
-        // Keep all bindings for other inputs
+
         for (Pair<String, String> binding : allBindings) {
             if (!binding.getRight().equals(inputPath)) {
                 newBindings.add(binding);
             }
         }
-        
-        // Add new bindings for this input
+
         for (String action : selectedActions) {
             newBindings.add(Pair.of(action, inputPath));
         }
-        
-        // Save the new bindings
+
         DefaultBindingManager manager = DefaultBindingManager.getInstance();
         manager.saveBindingsForSet(interactionProfile, setId, newBindings);
-        
-        System.out.println("Saved " + newBindings.size() + " bindings for " + interactionProfile);
-        System.out.println("Input " + inputPath + " now has " + selectedActions.size() + " actions bound");
-        
-        // Return to parent screen
+
         this.close();
     }
-    
+
     @Override
     public void close() {
         if (this.client != null) {
-            // Refresh the parent screen if it's a ChangeBindingScreen to show updated bindings
             if (parentScreen instanceof ChangeBindingScreen changeBindingScreen) {
                 changeBindingScreen.refresh();
             }

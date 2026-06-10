@@ -43,6 +43,27 @@ public class RequestModClient implements ClientModInitializer {
         LOGGER.error("[ReQuest] {}", s);
     }
 
+    public static void logError(String message, Throwable throwable) {
+        LOGGER.error("[ReQuest] {}", message, throwable);
+    }
+
+    public static String formatError(Throwable throwable) {
+        if (throwable == null) {
+            return "Unknown error";
+        }
+
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+
+        String message = current.getMessage();
+        if (message == null || message.isBlank()) {
+            message = current.getClass().getSimpleName();
+        }
+        return message;
+    }
+
     public static String getPreferredInteractionProfile() {
         MCVR vr = ClientDataHolderVR.getInstance().vr;
         if (vr instanceof MCOpenXR openxr) {

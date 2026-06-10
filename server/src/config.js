@@ -22,7 +22,7 @@ function intFromEnv(name, fallback) {
 
 export const config = {
   host: process.env.HOST || "0.0.0.0",
-  port: intFromEnv("PORT", 3000),
+  port: intFromEnv("PORT", 3267),
   databasePath: path.resolve(projectRoot, process.env.DATABASE_PATH || "./data/rebound.db"),
   jwtSecret: process.env.JWT_SECRET || "development-secret-change-me",
   authChallengeTtlSeconds: intFromEnv("AUTH_CHALLENGE_TTL_SECONDS", 300),
